@@ -491,6 +491,55 @@ export async function deleteFinancialNote(
   }
 }
 
+export async function saveFinancialNoteDraft(
+  supabase: SupabaseClient,
+  userId: string,
+  note: FinancialNote,
+  options: { deleteConfirmedTransactions?: boolean } = {
+    deleteConfirmedTransactions: true,
+  },
+) {
+  const { error } = await supabase.rpc("save_financial_note_draft", {
+    ...financialNoteRpcPayload(note),
+    p_user_id: userId,
+    p_delete_confirmed_transactions:
+      options.deleteConfirmedTransactions ?? true,
+  });
+
+  if (error) {
+    throw actionError(
+      "No se pudo guardar la edicion de la nota. El dashboard no fue actualizado. Revisa tu conexion y volve a intentar.",
+      error,
+    );
+  }
+}
+
+export async function confirmFinancialNoteWithTransactions(
+  supabase: SupabaseClient,
+  userId: string,
+  note: FinancialNote,
+  transactions: ConfirmedFinancialTransaction[],
+) {
+  if (transactions.length === 0) {
+    throw new Error("No hay movimientos confirmables para guardar.");
+  }
+
+  const { error } = await supabase.rpc("confirm_financial_note", {
+    ...financialNoteRpcPayload(note),
+    p_user_id: userId,
+    p_transactions: transactions.map((transaction) =>
+      transactionToRow(userId, transaction),
+    ),
+  });
+
+  if (error) {
+    throw actionError(
+      "No se pudo confirmar la nota. No se guardaron movimientos en el dashboard. Revisa tu conexion y volve a intentar.",
+      error,
+    );
+  }
+}
+
 export async function upsertConfirmedTransactions(
   supabase: SupabaseClient,
   userId: string,
@@ -523,6 +572,20 @@ export async function deleteTransactionsForNote(
   if (error) {
     throw error;
   }
+}
+
+function financialNoteRpcPayload(note: FinancialNote) {
+  return {
+    p_note_id: note.id,
+    p_folder: note.folder,
+    p_title: note.title,
+    p_body: note.body,
+    p_created_at: note.createdAt,
+    p_updated_at: note.updatedAt,
+    p_analysis: note.analysis,
+    p_confirmed_transaction_ids: note.confirmedTransactionIds,
+    p_pending_reconfirmation: Boolean(note.pendingReconfirmation),
+  };
 }
 
 function transactionToRow(
@@ -612,4 +675,10 @@ function throwFirstError(...errors: unknown[]) {
   if (error) {
     throw error;
   }
+}
+
+function actionError(message: string, error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+
+  return new Error(`${message} Detalle tecnico: ${detail}`);
 }

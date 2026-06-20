@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v2.0.1 - Estabilidad de confirmacion de notas
+
+* Confirmacion de notas movida a una operacion Supabase atomica: nota y transacciones se guardan juntas o no se confirma nada.
+* El dashboard ya no se actualiza con transacciones confirmadas hasta que la persistencia termina correctamente.
+* Edicion de notas ya confirmadas limpia transacciones persistidas y marca reconfirmacion pendiente en una operacion atomica.
+* Error accionable cuando Supabase no puede confirmar o guardar la reconfirmacion.
+
 ## v1.0.0
 
 * Dashboard FIRE x25.

@@ -29,10 +29,10 @@ import {
   type TransactionIntent,
 } from "@/lib/financial-notes";
 import {
+  confirmFinancialNoteWithTransactions,
   deleteFinancialNote,
-  deleteTransactionsForNote,
   loadNotesData,
-  upsertConfirmedTransactions,
+  saveFinancialNoteDraft,
   upsertFinancialNote,
 } from "@/lib/supabase-persistence";
 
@@ -226,7 +226,7 @@ export function FinancialNotesModule({
     requestAnimationFrame(() => editorRef.current?.focus());
   }
 
-  function updateSelectedNote(body: string) {
+  async function updateSelectedNote(body: string) {
     if (!selectedNote) {
       return;
     }
@@ -250,19 +250,38 @@ export function FinancialNotesModule({
           : selectedNote.pendingReconfirmation,
     };
 
+    if (noteWasConfirmed) {
+      if (syncStatus === "saving") {
+        return;
+      }
+
+      setSyncStatus("saving");
+      setSaveError("");
+
+      try {
+        await saveFinancialNoteDraft(supabase, userId, updatedNote);
+        setNotes((current) =>
+          current.map((note) =>
+            note.id === selectedNoteId ? updatedNote : note,
+          ),
+        );
+        setTransactions((current) =>
+          current.filter((transaction) => transaction.noteId !== selectedNoteId),
+        );
+        setSyncStatus("saved");
+      } catch (error) {
+        setSyncStatus("error");
+        setSaveError((error as Error).message);
+      }
+
+      return;
+    }
+
     setNotes((current) =>
       current.map((note) =>
         note.id === selectedNoteId ? updatedNote : note,
       ),
     );
-
-    if (noteWasConfirmed) {
-      setTransactions((current) =>
-        current.filter((transaction) => transaction.noteId !== selectedNoteId),
-      );
-      trackSave(deleteTransactionsForNote(supabase, userId, selectedNoteId));
-    }
-
     trackSave(upsertFinancialNote(supabase, userId, updatedNote));
   }
 
@@ -314,24 +333,44 @@ export function FinancialNotesModule({
       updatedAt: new Date().toISOString(),
     };
 
+    if (noteWasConfirmed) {
+      if (syncStatus === "saving") {
+        return;
+      }
+
+      setSyncStatus("saving");
+      setSaveError("");
+
+      saveFinancialNoteDraft(supabase, userId, updatedNote)
+        .then(() => {
+          setNotes((current) =>
+            current.map((note) =>
+              note.id === selectedNoteId ? updatedNote : note,
+            ),
+          );
+          setTransactions((current) =>
+            current.filter((transaction) => transaction.noteId !== selectedNoteId),
+          );
+          setSyncStatus("saved");
+        })
+        .catch((error: Error) => {
+          setSyncStatus("error");
+          setSaveError(error.message);
+        });
+
+      return;
+    }
+
     setNotes((current) =>
       current.map((note) =>
         note.id === selectedNoteId ? updatedNote : note,
       ),
     );
-
-    if (noteWasConfirmed) {
-      setTransactions((current) =>
-        current.filter((transaction) => transaction.noteId !== selectedNoteId),
-      );
-      trackSave(deleteTransactionsForNote(supabase, userId, selectedNoteId));
-    }
-
     trackSave(upsertFinancialNote(supabase, userId, updatedNote));
   }
 
-  function confirmDetectedItems() {
-    if (!selectedNote || noteAlreadyConfirmed) {
+  async function confirmDetectedItems() {
+    if (!selectedNote || noteAlreadyConfirmed || syncStatus === "saving") {
       return;
     }
 
@@ -357,17 +396,27 @@ export function FinancialNotesModule({
       pendingReconfirmation: false,
     };
 
-    setTransactions((current) => [...newTransactions, ...current]);
-    setNotes((current) =>
-      current.map((note) =>
-        note.id === selectedNote.id ? updatedNote : note,
-      ),
-    );
-    trackSave(
-      upsertFinancialNote(supabase, userId, updatedNote).then(() =>
-        upsertConfirmedTransactions(supabase, userId, newTransactions),
-      ),
-    );
+    setSyncStatus("saving");
+    setSaveError("");
+
+    try {
+      await confirmFinancialNoteWithTransactions(
+        supabase,
+        userId,
+        updatedNote,
+        newTransactions,
+      );
+      setTransactions((current) => [...newTransactions, ...current]);
+      setNotes((current) =>
+        current.map((note) =>
+          note.id === selectedNote.id ? updatedNote : note,
+        ),
+      );
+      setSyncStatus("saved");
+    } catch (error) {
+      setSyncStatus("error");
+      setSaveError((error as Error).message);
+    }
   }
 
   function removeNote(selectedId: string) {
@@ -664,15 +713,17 @@ export function FinancialNotesModule({
                   </button>
                   <button
                     className={`h-11 rounded-md px-4 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
-                      confirmableCount > 0
+                      confirmableCount > 0 && syncStatus !== "saving"
                         ? "bg-emerald-700 text-white hover:bg-emerald-800"
                         : "bg-stone-200 text-stone-600"
                     }`}
-                    disabled={confirmableCount === 0}
+                    disabled={confirmableCount === 0 || syncStatus === "saving"}
                     type="button"
                     onClick={confirmDetectedItems}
                   >
-                    {confirmableCount > 0
+                    {syncStatus === "saving"
+                      ? "Confirmando..."
+                      : confirmableCount > 0
                       ? `Confirmar ${confirmableCount}`
                       : "Confirmar"}
                   </button>

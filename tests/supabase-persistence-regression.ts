@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
@@ -7,10 +8,16 @@ import {
 import {
   createDashboardSettingsPayload,
   createDefaultDashboardData,
+  confirmFinancialNoteWithTransactions,
   normalizeDashboardData,
+  saveFinancialNoteDraft,
   weeklyExecutionReviewFromRow,
   weeklyExecutionReviewToRow,
 } from "../src/lib/supabase-persistence";
+import type {
+  ConfirmedFinancialTransaction,
+  FinancialNote,
+} from "../src/lib/financial-notes";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -138,3 +145,137 @@ assertEqual(
   "define_weekly_action",
   "mapped weekly review restores completed ids",
 );
+
+const note: FinancialNote = {
+  id: "00000000-0000-4000-8000-000000000201",
+  folder: "Captura rapida",
+  title: "Gaste 100 en comida",
+  body: "Gaste 100 en comida",
+  createdAt: "2026-06-20T12:00:00.000Z",
+  updatedAt: "2026-06-20T12:01:00.000Z",
+  analysis: [],
+  confirmedTransactionIds: ["00000000-0000-4000-8000-000000000301"],
+  pendingReconfirmation: false,
+};
+
+const transaction: ConfirmedFinancialTransaction = {
+  id: "00000000-0000-4000-8000-000000000301",
+  noteId: note.id,
+  noteTitle: note.title,
+  type: "gasto",
+  amount: 100,
+  currency: "USD",
+  category: "comida",
+  date: "2026-06-20",
+  recurring: false,
+  impulse: false,
+  coreExpense: true,
+  intent: "real",
+  freedomImpact: 2500,
+  sourceText: "Gaste 100 en comida",
+  ignored: false,
+  confirmedAt: "2026-06-20T12:02:00.000Z",
+};
+
+type RpcCall = {
+  name: string;
+  args: Record<string, unknown>;
+};
+
+function createRpcOnlySupabase(error?: Error) {
+  const calls: RpcCall[] = [];
+
+  return {
+    calls,
+    client: {
+      rpc(name: string, args: Record<string, unknown>) {
+        calls.push({ name, args });
+        return Promise.resolve({ error: error ?? null });
+      },
+      from(table: string) {
+        throw new Error(`Unexpected table write to ${table}`);
+      },
+    } as unknown as SupabaseClient,
+  };
+}
+
+async function assertRejects(
+  action: () => Promise<unknown>,
+  expectedMessage: string,
+) {
+  try {
+    await action();
+  } catch (error) {
+    assert(
+      error instanceof Error && error.message.includes(expectedMessage),
+      `expected error to include "${expectedMessage}", received "${
+        error instanceof Error ? error.message : String(error)
+      }"`,
+    );
+    return;
+  }
+
+  throw new Error(`expected action to reject with "${expectedMessage}"`);
+}
+
+async function runAsyncCases() {
+  const confirmationSupabase = createRpcOnlySupabase();
+  await confirmFinancialNoteWithTransactions(
+    confirmationSupabase.client,
+    userId,
+    note,
+    [transaction],
+  );
+
+  assertEqual(
+    confirmationSupabase.calls.length,
+    1,
+    "confirm note uses one RPC call",
+  );
+  assertEqual(
+    confirmationSupabase.calls[0].name,
+    "confirm_financial_note",
+    "confirm note uses atomic RPC",
+  );
+  assertEqual(
+    (confirmationSupabase.calls[0].args.p_transactions as unknown[]).length,
+    1,
+    "confirm note sends transactions with the note",
+  );
+
+  const failedConfirmationSupabase = createRpcOnlySupabase(
+    new Error("network unavailable"),
+  );
+  await assertRejects(
+    () =>
+      confirmFinancialNoteWithTransactions(
+        failedConfirmationSupabase.client,
+        userId,
+        note,
+        [transaction],
+      ),
+    "No se pudo confirmar la nota",
+  );
+
+  const draftSupabase = createRpcOnlySupabase();
+  await saveFinancialNoteDraft(draftSupabase.client, userId, {
+    ...note,
+    confirmedTransactionIds: [],
+    pendingReconfirmation: true,
+  });
+
+  assertEqual(
+    draftSupabase.calls[0].name,
+    "save_financial_note_draft",
+    "confirmed note edits use draft RPC",
+  );
+  assertEqual(
+    draftSupabase.calls[0].args.p_delete_confirmed_transactions,
+    true,
+    "draft RPC clears persisted transactions when reconfirmation is pending",
+  );
+}
+
+runAsyncCases().catch((error) => {
+  throw error;
+});
