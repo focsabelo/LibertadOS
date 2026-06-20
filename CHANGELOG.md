@@ -132,6 +132,15 @@
 * Header global unificado para todas las secciones, incluida Configuracion.
 * Eliminadas las tarjetas informativas del header para reducir altura y ruido visual.
 
+## v1.10.0 - Sistema Semanal de Ejecucion
+
+* Nueva seccion Semana con checklist operativo por semana.
+* Score sobrio de ejecucion semanal con estado pendiente, incompleto o cumplido.
+* Recomendacion practica unica basada solo en transacciones confirmadas.
+* Persistencia Supabase para reviews semanales con RLS por usuario.
+* Dashboard principal muestra la accion semanal sin convertir checks en movimientos reales.
+* Tests de analisis semanal y persistencia agregados al comando `npm run test:parser`.
+
 Todas las versiones verificadas con:
 
 * npm run lint

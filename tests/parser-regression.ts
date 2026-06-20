@@ -2,9 +2,11 @@ import {
   analyzeWealthRoadmap,
   analyzeBotOpera24hs,
   analyzeTargetPortfolio,
+  analyzeWeeklyExecution,
   analyzeLifestyleInflation,
   analyzeConfirmedDebtLoad,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
+  WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
   freedomNumber,
   type ConfirmedDebtLoadTransaction,
@@ -12,6 +14,8 @@ import {
   type LifestyleInflationTransaction,
   type TargetPortfolioSettings,
   type TargetPortfolioTransaction,
+  type WeeklyExecutionReview,
+  type WeeklyExecutionTransaction,
   type WealthMilestone,
   type BotOpera24hsInvestment,
 } from "../src/lib/finance";
@@ -667,6 +671,17 @@ type BotOperaCase = {
   monthReinvestedAmount: number;
 };
 
+type WeeklyExecutionCase = {
+  name: string;
+  transactions: WeeklyExecutionTransaction[];
+  review: WeeklyExecutionReview;
+  status: "pendiente" | "incompleto" | "cumplido";
+  scorePercent: number;
+  completedCount: number;
+  recommendation: string;
+  overdueAction: string;
+};
+
 const debtLoadCases: DebtLoadCase[] = [
   {
     name: "Intencion de deuda no cambia dashboard",
@@ -956,8 +971,63 @@ for (const testCase of botOperaCases) {
   runBotOperaCase(testCase);
 }
 
+const weeklyExecutionCases: WeeklyExecutionCase[] = [
+  {
+    name: "Semana sin checks queda pendiente con accion de captura",
+    transactions: [],
+    review: {
+      weekKey: "2026-W25",
+      completedItemIds: [],
+    },
+    status: "pendiente",
+    scorePercent: 0,
+    completedCount: 0,
+    recommendation: "Capturar y confirmar al menos un movimiento real esta semana.",
+    overdueAction: "Revisar ingresos confirmados",
+  },
+  {
+    name: "Semana parcial prioriza compras emocionales",
+    transactions: [
+      weeklyTx("ingreso", 1000, "2026-06-17"),
+      weeklyTx("gasto", 240, "2026-06-18", {
+        impulse: true,
+        antiErrorReview: { applies: true, signals: ["Compra grande"] },
+      }),
+    ],
+    review: {
+      weekKey: "2026-W25",
+      completedItemIds: ["review_income", "review_expenses"],
+    },
+    status: "incompleto",
+    scorePercent: 20,
+    completedCount: 2,
+    recommendation: "Revisar compra emocional y esperar 48 horas antes de repetirla.",
+    overdueAction: "Separar 5% para colchon",
+  },
+  {
+    name: "Semana completa queda cumplida sin gamificacion",
+    transactions: [
+      weeklyTx("ingreso", 1200, "2026-06-17"),
+      weeklyTx("inversion", 300, "2026-06-18"),
+    ],
+    review: {
+      weekKey: "2026-W25",
+      completedItemIds: WEEKLY_EXECUTION_ITEMS.map((item) => item.id),
+    },
+    status: "cumplido",
+    scorePercent: 100,
+    completedCount: WEEKLY_EXECUTION_ITEMS.length,
+    recommendation: "Semana cerrada. Mantener captura y revisar el proximo hito.",
+    overdueAction: "",
+  },
+];
+
+for (const testCase of weeklyExecutionCases) {
+  runWeeklyExecutionCase(testCase);
+}
+
 console.log(
-  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}`,
+  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}`,
 );
 
 function tx(
@@ -1303,4 +1373,65 @@ function runBotOperaCase(expected: BotOperaCase) {
     expected.name,
     "month.reinvestedAmount",
   );
+}
+
+function weeklyTx(
+  type: string,
+  amount: number,
+  date: string,
+  patch: Partial<WeeklyExecutionTransaction> = {},
+): WeeklyExecutionTransaction {
+  return {
+    type,
+    amount,
+    date,
+    category: "sin categoria",
+    intent: "real",
+    ignored: false,
+    ...patch,
+  };
+}
+
+function runWeeklyExecutionCase(expected: WeeklyExecutionCase) {
+  const analysis = analyzeWeeklyExecution({
+    transactions: expected.transactions,
+    review: expected.review,
+    today: new Date("2026-06-18T12:00:00Z"),
+  });
+
+  assertEqual(analysis.status, expected.status, expected.name, "status");
+  assertEqual(
+    analysis.scorePercent,
+    expected.scorePercent,
+    expected.name,
+    "scorePercent",
+  );
+  assertEqual(
+    analysis.completedCount,
+    expected.completedCount,
+    expected.name,
+    "completedCount",
+  );
+  assertEqual(
+    analysis.recommendation,
+    expected.recommendation,
+    expected.name,
+    "recommendation",
+  );
+
+  if (expected.overdueAction) {
+    assertIncludes(
+      analysis.overdueActions,
+      expected.overdueAction,
+      expected.name,
+      "overdueActions",
+    );
+  } else {
+    assertEqual(
+      analysis.overdueActions.length,
+      0,
+      expected.name,
+      "overdueActions.length",
+    );
+  }
 }

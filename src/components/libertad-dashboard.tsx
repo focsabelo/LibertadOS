@@ -27,6 +27,7 @@ import {
   analyzeConfirmedDebtLoad,
   analyzeBotOpera24hs,
   analyzeTargetPortfolio,
+  analyzeWeeklyExecution,
   analyzeWealthRoadmap,
   annualSpend,
   analyzeLifestyleInflation,
@@ -45,6 +46,10 @@ import {
   type MilestoneProgress,
   type PortfolioAssetClass,
   type TargetPortfolioSettings,
+  type WeeklyExecutionItemId,
+  type WeeklyExecutionReview,
+  type WeeklyExecutionStatus,
+  type WeeklyExecutionAnalysis,
   type WealthRoadmapAnalysis,
 } from "@/lib/finance";
 import {
@@ -60,6 +65,7 @@ import {
   saveBotOpera24hsInvestment,
   saveDashboardSettings,
   saveTargetPortfolio,
+  saveWeeklyExecutionReview,
   updateFixedMonthlyExpense,
 } from "@/lib/supabase-persistence";
 
@@ -149,6 +155,7 @@ type AppSection =
   | "decisiones"
   | "cartera"
   | "deuda"
+  | "semana"
   | "roadmap"
   | "macro"
   | "configuracion";
@@ -184,6 +191,11 @@ const modules: {
     id: "deuda",
     label: "Deuda",
     description: "Carga confirmada",
+  },
+  {
+    id: "semana",
+    label: "Semana",
+    description: "Ejecucion semanal",
   },
   {
     id: "roadmap",
@@ -234,6 +246,9 @@ export function LibertadDashboard() {
     useState<TargetPortfolioSettings>(DEFAULT_TARGET_PORTFOLIO_SETTINGS);
   const [botOperaInvestment, setBotOperaInvestment] =
     useState<BotOpera24hsInvestment>(DEFAULT_BOT_OPERA24HS_INVESTMENT);
+  const [weeklyExecutionReviews, setWeeklyExecutionReviews] = useState<
+    WeeklyExecutionReview[]
+  >([]);
   const [roadmapSimulatedContribution, setRoadmapSimulatedContribution] =
     useState(DEFAULT_INPUTS.monthlyContribution + 500);
   const [confirmedTransactions, setConfirmedTransactions] = useState<
@@ -316,6 +331,7 @@ export function LibertadDashboard() {
       setSaveStatus("idle");
       setSaveError("");
       setFixedMonthlyExpenses([]);
+      setWeeklyExecutionReviews([]);
       setFixedExpenseDraftText("");
       setEditingFixedExpenseId("");
       setFixedExpenseStatus("idle");
@@ -337,6 +353,7 @@ export function LibertadDashboard() {
         setHasLoaded(false);
         setConfirmedTransactions([]);
         setFixedMonthlyExpenses([]);
+        setWeeklyExecutionReviews([]);
       });
       return;
     }
@@ -363,6 +380,7 @@ export function LibertadDashboard() {
         setInputs(dashboardData.inputs);
         setPortfolioSettings(dashboardData.portfolioSettings);
         setBotOperaInvestment(dashboardData.botOperaInvestment);
+        setWeeklyExecutionReviews(dashboardData.weeklyExecutionReviews);
         setRoadmapSimulatedContribution(
           dashboardData.roadmapSimulatedContribution,
         );
@@ -519,6 +537,21 @@ export function LibertadDashboard() {
     () => analyzeBotOpera24hs(botOperaInvestment),
     [botOperaInvestment],
   );
+  const weeklyExecution = useMemo(() => {
+    const currentWeek = analyzeWeeklyExecution({
+      transactions: confirmedTransactions,
+      today: new Date(),
+    }).weekKey;
+    const review = weeklyExecutionReviews.find(
+      (item) => item.weekKey === currentWeek,
+    );
+
+    return analyzeWeeklyExecution({
+      transactions: confirmedTransactions,
+      review,
+      today: new Date(),
+    });
+  }, [confirmedTransactions, weeklyExecutionReviews]);
 
   const effectiveInputs = useMemo(
     () => ({
@@ -852,6 +885,43 @@ export function LibertadDashboard() {
     }
   }
 
+  async function toggleWeeklyExecutionItem(itemId: WeeklyExecutionItemId) {
+    if (!supabase || !userId) {
+      return;
+    }
+
+    const previousReviews = weeklyExecutionReviews;
+    const existingReview = weeklyExecutionReviews.find(
+      (review) => review.weekKey === weeklyExecution.weekKey,
+    ) ?? {
+      weekKey: weeklyExecution.weekKey,
+      completedItemIds: [],
+    };
+    const isCompleted = existingReview.completedItemIds.includes(itemId);
+    const nextReview: WeeklyExecutionReview = {
+      weekKey: weeklyExecution.weekKey,
+      completedItemIds: isCompleted
+        ? existingReview.completedItemIds.filter((id) => id !== itemId)
+        : [...existingReview.completedItemIds, itemId],
+    };
+
+    setWeeklyExecutionReviews((current) => [
+      nextReview,
+      ...current.filter((review) => review.weekKey !== nextReview.weekKey),
+    ]);
+    setSaveStatus("saving");
+    setSaveError("");
+
+    try {
+      await saveWeeklyExecutionReview(supabase, userId, nextReview);
+      setSaveStatus("saved");
+    } catch (error) {
+      setWeeklyExecutionReviews(previousReviews);
+      setSaveStatus("error");
+      setSaveError((error as Error).message);
+    }
+  }
+
   function selectSection(section: AppSection) {
     setActiveSection(section);
     window.history.pushState(null, "", `#${section}`);
@@ -865,6 +935,7 @@ export function LibertadDashboard() {
     await supabase.auth.signOut();
     setSession(null);
     setConfirmedTransactions([]);
+    setWeeklyExecutionReviews([]);
   }
 
   const activeModule =
@@ -872,22 +943,25 @@ export function LibertadDashboard() {
   const needsDebtAttention = confirmedDebtLoad.highRiskCount > 0;
   const needsPortfolioAttention = Boolean(targetPortfolio.targetWarning);
   const needsLifestyleAttention = lifestyleInflation.risk === "alto";
+  const needsWeeklyExecution = weeklyExecution.status !== "cumplido";
   const primaryAttention = needsDebtAttention
     ? "Revisar deuda confirmada"
     : needsLifestyleAttention
       ? "Revisar inflacion de estilo de vida"
       : needsPortfolioAttention
         ? "Ajustar objetivos de cartera"
-        : confirmedTransactions.length === 0
-          ? "Capturar y confirmar el primer movimiento"
-          : "Mantener captura semanal";
+        : needsWeeklyExecution
+          ? "Cerrar sistema semanal"
+          : confirmedTransactions.length === 0
+            ? "Capturar y confirmar el primer movimiento"
+            : "Mantener captura semanal";
   const weeklyAction = needsDebtAttention
     ? "Abrir deuda y revisar la presion mensual."
     : needsLifestyleAttention
       ? "Abrir dashboard y aplicar una regla concreta al aumento."
       : needsPortfolioAttention
         ? "Abrir cartera y corregir objetivos hasta 100%."
-        : "Capturar una nota real y confirmar solo lo revisado.";
+        : weeklyExecution.recommendation;
 
   if (supabaseConfigError) {
     return (
@@ -1196,6 +1270,12 @@ export function LibertadDashboard() {
                 </div>
               </section>
 
+              <WeeklyExecutionPanel
+                analysis={weeklyExecution}
+                onOpenNotes={() => selectSection("notas")}
+                onToggleItem={toggleWeeklyExecutionItem}
+              />
+
               <FireLeversPanel summary={transactionSummary} />
 
               <LifestyleInflationPanel analysis={lifestyleInflation} />
@@ -1229,6 +1309,14 @@ export function LibertadDashboard() {
 
           {activeSection === "deuda" ? (
             <DebtLoadPanel analysis={confirmedDebtLoad} />
+          ) : null}
+
+          {activeSection === "semana" ? (
+            <WeeklyExecutionPanel
+              analysis={weeklyExecution}
+              onOpenNotes={() => selectSection("notas")}
+              onToggleItem={toggleWeeklyExecutionItem}
+            />
           ) : null}
 
           {activeSection === "configuracion" ? (
@@ -1502,6 +1590,199 @@ function SyncStatusPill({
       {label}
     </span>
   );
+}
+
+function WeeklyExecutionPanel({
+  analysis,
+  onOpenNotes,
+  onToggleItem,
+}: {
+  analysis: WeeklyExecutionAnalysis;
+  onOpenNotes: () => void;
+  onToggleItem: (itemId: WeeklyExecutionItemId) => void;
+}) {
+  const status = weeklyExecutionStatusCopy(analysis.status);
+
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-3xl">
+          <h2 className="text-xl font-semibold text-stone-950">
+            Sistema semanal de ejecucion
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-stone-600">
+            Revision operativa de la semana en curso. El checklist no crea
+            transacciones: solo ayuda a cerrar conducta, datos confirmados y
+            proxima accion.
+          </p>
+        </div>
+        <div
+          className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-semibold ${status.classes}`}
+        >
+          {status.label}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="rounded-lg border border-stone-900 bg-stone-950 p-5 text-white">
+          <p className="text-sm font-semibold text-emerald-300">
+            Semana {analysis.weekKey}
+          </p>
+          <p className="libertad-number mt-3 text-4xl font-semibold">
+            {analysis.scorePercent}%
+          </p>
+          <p className="mt-2 text-sm leading-6 text-stone-300">
+            {analysis.completedCount} de {analysis.totalCount} puntos cerrados.
+          </p>
+          <div
+            aria-label={`Ejecucion semanal ${analysis.scorePercent}%`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={analysis.scorePercent}
+            className="libertad-meter mt-5 h-4 bg-white/15"
+            role="progressbar"
+          >
+            <div
+              className="h-full rounded-full bg-emerald-400"
+              style={{ width: `${analysis.scorePercent}%` }}
+            />
+          </div>
+          <div className="mt-5 grid gap-2">
+            <SignalRow
+              label="Ingreso semanal"
+              value={currencyFormatter.format(analysis.weekIncome)}
+            />
+            <SignalRow
+              label="Gasto semanal"
+              value={currencyFormatter.format(analysis.weekExpenses)}
+            />
+            <SignalRow
+              label="Tasa de ahorro"
+              value={`${percentFormatter.format(analysis.savingRate)}%`}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="libertad-soft-panel rounded-md p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-stone-800">
+                  Accion principal
+                </p>
+                <p className="mt-2 text-sm leading-6 text-stone-700">
+                  {analysis.recommendation}
+                </p>
+              </div>
+              <button
+                className="inline-flex min-h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                type="button"
+                onClick={onOpenNotes}
+              >
+                Capturar nota
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricCard
+              label="Aportes"
+              value={analysis.investmentCount.toString()}
+              tone={analysis.investmentCount > 0 ? "green" : "neutral"}
+            />
+            <MetricCard
+              label="Compras emocionales"
+              value={analysis.emotionalPurchaseCount.toString()}
+              tone={analysis.emotionalPurchaseCount > 0 ? "amber" : "neutral"}
+            />
+            <MetricCard
+              label="Deuda nueva"
+              value={analysis.newDebtCount.toString()}
+              tone={analysis.newDebtCount > 0 ? "red" : "neutral"}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        {analysis.items.map((item) => (
+          <button
+            key={item.id}
+            aria-pressed={item.completed}
+            className={`min-h-16 rounded-md border p-4 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+              item.completed
+                ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                : "border-stone-200 bg-white text-stone-900 hover:border-stone-300 hover:bg-stone-50"
+            }`}
+            type="button"
+            onClick={() => onToggleItem(item.id)}
+          >
+            <span className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs font-semibold ${
+                  item.completed
+                    ? "border-emerald-700 bg-emerald-700 text-white"
+                    : "border-stone-300 bg-white text-transparent"
+                }`}
+              >
+                OK
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">
+                  {item.label}
+                </span>
+                <span className="mt-1 block text-xs leading-5 opacity-75">
+                  {item.detail}
+                </span>
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {analysis.overdueActions.length > 0 ? (
+        <div className="mt-5 rounded-md border border-stone-200 bg-stone-50 p-4">
+          <p className="text-sm font-semibold text-stone-800">
+            Pendiente para cerrar
+          </p>
+          <ul className="mt-3 grid gap-2">
+            {analysis.overdueActions.slice(0, 4).map((action) => (
+              <li
+                key={action}
+                className="grid grid-cols-[8px_minmax(0,1fr)] gap-2 text-sm leading-6 text-stone-700"
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-2.5 h-2 w-2 rounded-full bg-stone-500"
+                />
+                <span>{action}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function weeklyExecutionStatusCopy(status: WeeklyExecutionStatus) {
+  const copy = {
+    pendiente: {
+      label: "Pendiente",
+      classes: "border-stone-200 bg-stone-50 text-stone-800",
+    },
+    incompleto: {
+      label: "Incompleto",
+      classes: "border-amber-200 bg-amber-50 text-amber-950",
+    },
+    cumplido: {
+      label: "Cumplido",
+      classes: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    },
+  };
+
+  return copy[status];
 }
 
 function WealthRoadmapPanel({

@@ -8,6 +8,8 @@ import {
   type FreedomInputs,
   type InvestmentPolicySettings,
   type TargetPortfolioSettings,
+  type WeeklyExecutionItemId,
+  type WeeklyExecutionReview,
 } from "./finance";
 import {
   analyzeFinancialNote,
@@ -27,6 +29,7 @@ export type DashboardData = {
   inputs: FreedomInputs;
   portfolioSettings: TargetPortfolioSettings;
   botOperaInvestment: BotOpera24hsInvestment;
+  weeklyExecutionReviews: WeeklyExecutionReview[];
   roadmapSimulatedContribution: number;
   onboardingSeen: boolean;
 };
@@ -58,6 +61,7 @@ export function createDefaultDashboardData(): DashboardData {
     inputs: DEFAULT_INPUTS,
     portfolioSettings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
     botOperaInvestment: DEFAULT_BOT_OPERA24HS_INVESTMENT,
+    weeklyExecutionReviews: [],
     roadmapSimulatedContribution: defaultRoadmapContribution,
     onboardingSeen: false,
   };
@@ -93,6 +97,7 @@ export function normalizeDashboardData(rows: {
     policy: Partial<InvestmentPolicySettings>;
   }> | null;
   bot?: Partial<BotOpera24hsInvestment> | null;
+  weeklyReviews?: JsonRecord[] | null;
   rules?: { scope?: string; data?: unknown }[] | null;
 }): DashboardData {
   const defaults = createDefaultDashboardData();
@@ -128,6 +133,9 @@ export function normalizeDashboardData(rows: {
           ? botRuleData.reinvestmentRule
           : bot.reinvestmentRule,
     }),
+    weeklyExecutionReviews: (rows.weeklyReviews ?? []).map(
+      weeklyExecutionReviewFromRow,
+    ),
     roadmapSimulatedContribution: Number.isFinite(
       rows.settings?.roadmap_simulated_contribution,
     )
@@ -141,7 +149,7 @@ export async function loadDashboardData(
   supabase: SupabaseClient,
   userId: string,
 ) {
-  const [settings, portfolio, bot, rules] = await Promise.all([
+  const [settings, portfolio, bot, weeklyReviews, rules] = await Promise.all([
     supabase
       .from("dashboard_settings")
       .select("inputs, roadmap_simulated_contribution, onboarding_seen")
@@ -159,10 +167,20 @@ export async function loadDashboardData(
       )
       .eq("user_id", userId)
       .maybeSingle(),
+    supabase
+      .from("weekly_execution_reviews")
+      .select("week_key, completed_item_ids")
+      .eq("user_id", userId),
     supabase.from("investment_rules").select("scope, data").eq("user_id", userId),
   ]);
 
-  throwFirstError(settings.error, portfolio.error, bot.error, rules.error);
+  throwFirstError(
+    settings.error,
+    portfolio.error,
+    bot.error,
+    weeklyReviews.error,
+    rules.error,
+  );
 
   return normalizeDashboardData({
     settings: settings.data as Parameters<typeof normalizeDashboardData>[0]["settings"],
@@ -179,6 +197,7 @@ export async function loadDashboardData(
           monthlyResults: bot.data.monthly_results,
         }
       : null,
+    weeklyReviews: weeklyReviews.data as JsonRecord[] | null,
     rules: rules.data,
   });
 }
@@ -252,6 +271,21 @@ export async function saveBotOpera24hsInvestment(
   await saveInvestmentRule(supabase, userId, "bot_opera24hs_reinvestment", {
     reinvestmentRule: normalized.reinvestmentRule,
   });
+}
+
+export async function saveWeeklyExecutionReview(
+  supabase: SupabaseClient,
+  userId: string,
+  review: WeeklyExecutionReview,
+) {
+  const { error } = await supabase.from("weekly_execution_reviews").upsert(
+    weeklyExecutionReviewToRow(userId, review),
+    { onConflict: "user_id,week_key" },
+  );
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function saveInvestmentRule(
@@ -541,6 +575,28 @@ function transactionFromRow(row: JsonRecord): ConfirmedFinancialTransaction {
     antiErrorReview:
       row.anti_error_review as ConfirmedFinancialTransaction["antiErrorReview"],
     confirmedAt: String(row.confirmed_at),
+  };
+}
+
+export function weeklyExecutionReviewToRow(
+  userId: string,
+  review: WeeklyExecutionReview,
+) {
+  return {
+    user_id: userId,
+    week_key: review.weekKey,
+    completed_item_ids: review.completedItemIds,
+  };
+}
+
+export function weeklyExecutionReviewFromRow(row: JsonRecord): WeeklyExecutionReview {
+  return {
+    weekKey: String(row.week_key ?? ""),
+    completedItemIds: Array.isArray(row.completed_item_ids)
+      ? row.completed_item_ids
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item as WeeklyExecutionItemId)
+      : [],
   };
 }
 

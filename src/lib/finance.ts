@@ -127,6 +127,73 @@ export type ConfirmedDebtLoadAnalysis = {
   signals: string[];
 };
 
+export type WeeklyExecutionItemId =
+  | "review_income"
+  | "review_expenses"
+  | "review_saving_rate"
+  | "separate_emergency_fund"
+  | "confirm_monthly_investment"
+  | "detect_emotional_purchases"
+  | "detect_fomo_impulse"
+  | "review_new_debt"
+  | "review_roadmap"
+  | "define_weekly_action";
+
+export type WeeklyExecutionStatus = "pendiente" | "incompleto" | "cumplido";
+
+export type WeeklyExecutionItem = {
+  id: WeeklyExecutionItemId;
+  label: string;
+};
+
+export type WeeklyExecutionReview = {
+  weekKey: string;
+  completedItemIds: WeeklyExecutionItemId[];
+};
+
+export type WeeklyExecutionTransaction = {
+  type: string;
+  amount: number;
+  date: string;
+  category?: string;
+  recurring?: boolean;
+  intent?: string;
+  ignored?: boolean;
+  impulse?: boolean;
+  debt?: {
+    monthlyMarginImpact?: number;
+    risk?: string;
+  };
+  antiErrorReview?: {
+    applies?: boolean;
+    signals?: string[];
+    detectedEnemies?: string[];
+  };
+};
+
+export type WeeklyExecutionAnalysisItem = WeeklyExecutionItem & {
+  completed: boolean;
+  detail: string;
+};
+
+export type WeeklyExecutionAnalysis = {
+  weekKey: string;
+  status: WeeklyExecutionStatus;
+  scorePercent: number;
+  completedCount: number;
+  totalCount: number;
+  items: WeeklyExecutionAnalysisItem[];
+  overdueActions: string[];
+  recommendation: string;
+  weekIncome: number;
+  weekExpenses: number;
+  weekSavings: number;
+  savingRate: number;
+  investmentCount: number;
+  emotionalPurchaseCount: number;
+  newDebtCount: number;
+};
+
 export type PortfolioAssetClass =
   | "etf_usa"
   | "etf_europa"
@@ -367,6 +434,19 @@ export const DEFAULT_WEALTH_MILESTONES: readonly WealthMilestone[] = [
     targetAmount: 1000000,
     basis: "net_worth",
   },
+];
+
+export const WEEKLY_EXECUTION_ITEMS: readonly WeeklyExecutionItem[] = [
+  { id: "review_income", label: "Revisar ingresos confirmados" },
+  { id: "review_expenses", label: "Revisar gastos confirmados" },
+  { id: "review_saving_rate", label: "Revisar tasa de ahorro" },
+  { id: "separate_emergency_fund", label: "Separar 5% para colchon" },
+  { id: "confirm_monthly_investment", label: "Confirmar aporte del mes" },
+  { id: "detect_emotional_purchases", label: "Detectar compras emocionales" },
+  { id: "detect_fomo_impulse", label: "Detectar FOMO o impulso" },
+  { id: "review_new_debt", label: "Revisar deuda nueva" },
+  { id: "review_roadmap", label: "Revisar avance del roadmap" },
+  { id: "define_weekly_action", label: "Definir accion financiera semanal" },
 ];
 
 const PORTFOLIO_ALIGNMENT_TOLERANCE = 2;
@@ -734,6 +814,235 @@ export function analyzeConfirmedDebtLoad(
   summary.signals = Array.from(signals);
 
   return summary;
+}
+
+export function analyzeWeeklyExecution({
+  transactions,
+  review,
+  today = new Date(),
+}: {
+  transactions: WeeklyExecutionTransaction[];
+  review?: WeeklyExecutionReview;
+  today?: Date;
+}): WeeklyExecutionAnalysis {
+  const weekKey = review?.weekKey ?? toIsoWeekKey(today);
+  const completedItemIds = new Set(review?.completedItemIds ?? []);
+  const weekTransactions = transactions.filter(
+    (transaction) =>
+      isRealTransaction(transaction) && toIsoWeekKey(transaction.date) === weekKey,
+  );
+  const weekIncome = sumTransactionsByType(weekTransactions, "ingreso");
+  const weekExpenses = weekTransactions.reduce((total, transaction) => {
+    if (transaction.type !== "gasto" && transaction.type !== "deuda") {
+      return total;
+    }
+
+    return total + Math.max(0, transaction.amount);
+  }, 0);
+  const weekSavings = weekIncome - weekExpenses;
+  const savingRate = weekIncome > 0 ? (weekSavings / weekIncome) * 100 : 0;
+  const investmentCount = weekTransactions.filter(
+    (transaction) => transaction.type === "inversion",
+  ).length;
+  const emotionalPurchaseCount = weekTransactions.filter(
+    isEmotionalWeeklyPurchase,
+  ).length;
+  const newDebtCount = weekTransactions.filter(
+    (transaction) => transaction.type === "deuda",
+  ).length;
+  const items = WEEKLY_EXECUTION_ITEMS.map((item) => ({
+    ...item,
+    completed: completedItemIds.has(item.id),
+    detail: weeklyExecutionItemDetail(item.id, {
+      weekIncome,
+      weekExpenses,
+      savingRate,
+      investmentCount,
+      emotionalPurchaseCount,
+      newDebtCount,
+    }),
+  }));
+  const completedCount = items.filter((item) => item.completed).length;
+  const totalCount = items.length;
+  const status: WeeklyExecutionStatus =
+    completedCount === 0
+      ? "pendiente"
+      : completedCount === totalCount
+        ? "cumplido"
+        : "incompleto";
+
+  return {
+    weekKey,
+    status,
+    scorePercent:
+      totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+    completedCount,
+    totalCount,
+    items,
+    overdueActions: items
+      .filter((item) => !item.completed)
+      .map((item) => item.label),
+    recommendation: weeklyExecutionRecommendation({
+      status,
+      weekTransactions,
+      emotionalPurchaseCount,
+      newDebtCount,
+      investmentCount,
+      weekIncome,
+      completedItemIds,
+    }),
+    weekIncome,
+    weekExpenses,
+    weekSavings,
+    savingRate,
+    investmentCount,
+    emotionalPurchaseCount,
+    newDebtCount,
+  };
+}
+
+function sumTransactionsByType(
+  transactions: WeeklyExecutionTransaction[],
+  type: string,
+) {
+  return transactions.reduce(
+    (total, transaction) =>
+      transaction.type === type ? total + Math.max(0, transaction.amount) : total,
+    0,
+  );
+}
+
+function weeklyExecutionItemDetail(
+  itemId: WeeklyExecutionItemId,
+  summary: Pick<
+    WeeklyExecutionAnalysis,
+    | "weekIncome"
+    | "weekExpenses"
+    | "savingRate"
+    | "investmentCount"
+    | "emotionalPurchaseCount"
+    | "newDebtCount"
+  >,
+) {
+  if (itemId === "review_income") {
+    return `${summary.weekIncome > 0 ? "Ingreso confirmado" : "Sin ingreso confirmado"} esta semana.`;
+  }
+
+  if (itemId === "review_expenses") {
+    return `${summary.weekExpenses > 0 ? "Gasto confirmado" : "Sin gasto confirmado"} esta semana.`;
+  }
+
+  if (itemId === "review_saving_rate") {
+    return `Tasa semanal estimada: ${Math.round(summary.savingRate)}%.`;
+  }
+
+  if (itemId === "confirm_monthly_investment") {
+    return `${summary.investmentCount} aportes confirmados esta semana.`;
+  }
+
+  if (itemId === "detect_emotional_purchases") {
+    return `${summary.emotionalPurchaseCount} compras con senales emocionales.`;
+  }
+
+  if (itemId === "review_new_debt") {
+    return `${summary.newDebtCount} deudas confirmadas esta semana.`;
+  }
+
+  if (itemId === "separate_emergency_fund") {
+    return "Marca este punto despues de separar el dinero.";
+  }
+
+  if (itemId === "detect_fomo_impulse") {
+    return "Revisa FOMO, comparacion e impulso antes de repetir compras.";
+  }
+
+  if (itemId === "review_roadmap") {
+    return "Conecta la semana con el proximo hito patrimonial.";
+  }
+
+  return "Cierra con una accion concreta y revisable.";
+}
+
+function weeklyExecutionRecommendation({
+  status,
+  weekTransactions,
+  emotionalPurchaseCount,
+  newDebtCount,
+  investmentCount,
+  weekIncome,
+  completedItemIds,
+}: {
+  status: WeeklyExecutionStatus;
+  weekTransactions: WeeklyExecutionTransaction[];
+  emotionalPurchaseCount: number;
+  newDebtCount: number;
+  investmentCount: number;
+  weekIncome: number;
+  completedItemIds: Set<WeeklyExecutionItemId>;
+}) {
+  if (status === "cumplido") {
+    return "Semana cerrada. Mantener captura y revisar el proximo hito.";
+  }
+
+  if (weekTransactions.length === 0) {
+    return "Capturar y confirmar al menos un movimiento real esta semana.";
+  }
+
+  if (emotionalPurchaseCount > 0) {
+    return "Revisar compra emocional y esperar 48 horas antes de repetirla.";
+  }
+
+  if (newDebtCount > 0) {
+    return "Abrir deuda y revisar la presion mensual antes de asumir otra cuota.";
+  }
+
+  if (!completedItemIds.has("separate_emergency_fund") && weekIncome > 0) {
+    return `Separar ${Math.round(DEFAULT_EMERGENCY_FUND_RATE * 100)}% del ingreso confirmado para colchon.`;
+  }
+
+  if (investmentCount === 0) {
+    return "Confirmar si el aporte del mes ya se invirtio o sigue pendiente.";
+  }
+
+  return "Definir una accion financiera concreta para cerrar la semana.";
+}
+
+function isEmotionalWeeklyPurchase(transaction: WeeklyExecutionTransaction) {
+  if (transaction.type !== "gasto" && transaction.type !== "deuda") {
+    return false;
+  }
+
+  const signals = transaction.antiErrorReview?.signals ?? [];
+  const enemies = transaction.antiErrorReview?.detectedEnemies ?? [];
+
+  return (
+    Boolean(transaction.impulse) ||
+    Boolean(transaction.antiErrorReview?.applies) ||
+    signals.some((signal) => /compra|impulso|fomo/i.test(signal)) ||
+    enemies.some((enemy) => /impulso|fomo|emocional|comparacion/i.test(enemy))
+  );
+}
+
+function toIsoWeekKey(value: Date | string) {
+  const date = value instanceof Date ? new Date(value) : new Date(`${value}T00:00:00Z`);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const utcDate = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  const day = utcDate.getUTCDay() || 7;
+
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day);
+
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(
+    ((utcDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+  );
+
+  return `${utcDate.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 function debtPressureRisk({

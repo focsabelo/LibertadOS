@@ -235,7 +235,7 @@ Estado:
 
 ---
 
-## v1.7.5 Sistema Semanal de Ejecución
+## v1.7.5 Sistema Semanal de Ejecución - cerrado
 
 Objetivo:
 Convertir la app en un sistema de disciplina financiera, no solo en un panel informativo.
@@ -263,6 +263,15 @@ Mostrar:
 * score de ejecución semanal;
 * acciones atrasadas;
 * recomendación práctica única.
+
+Estado:
+
+* analizador semanal agregado usando solo transacciones confirmadas;
+* checklist persistente por usuario y semana con RLS en Supabase;
+* pantalla dedicada de Semana implementada;
+* resumen semanal agregado al dashboard operativo;
+* score sobrio, acciones pendientes y recomendacion unica sin gamificacion;
+* confirmacion manual preservada: el checklist no crea transacciones ni modifica formulas.
 
 Ejemplos de acciones:
 
@@ -535,12 +544,9 @@ Cada módulo debe responder:
 
 ## Prioridad recomendada
 
-1. v1.7.5 Sistema Semanal de Ejecución.
-2. v1.8.0 Modo Decisión.
-3. v1.9.0 Política Personal de Inversión.
-4. v2.0.0 Margen Financiero.
-5. v2.1.0 Reglas de Aumentos e Ingresos Extra.
-6. v2.2.0 Revisión Mensual.
-
-
+1. v1.8.0 Modo Decisión.
+2. v1.9.0 Política Personal de Inversión.
+3. v2.0.0 Margen Financiero.
+4. v2.1.0 Reglas de Aumentos e Ingresos Extra.
+5. v2.2.0 Revisión Mensual.
 
