@@ -15,6 +15,14 @@ import {
 } from "@/components/financial-notes-module";
 import type { ConfirmedFinancialTransaction } from "@/lib/financial-notes";
 import {
+  FIXED_MONTHLY_EXPENSE_CATEGORIES,
+  FIXED_MONTHLY_EXPENSE_CURRENCIES,
+  createFixedMonthlyExpenseDraft,
+  summarizeActiveFixedExpenses,
+  type FixedMonthlyExpense,
+  type FixedMonthlyExpenseDraft,
+} from "@/lib/fixed-monthly-expenses";
+import {
   analyzeConfirmedDebtLoad,
   analyzeBotOpera24hs,
   analyzeTargetPortfolio,
@@ -43,11 +51,15 @@ import {
   getSupabaseConfigError,
 } from "@/lib/supabase-client";
 import {
+  createFixedMonthlyExpense,
+  deleteFixedMonthlyExpense,
+  loadFixedMonthlyExpenses,
   loadConfirmedTransactions,
   loadDashboardData,
   saveBotOpera24hsInvestment,
   saveDashboardSettings,
   saveTargetPortfolio,
+  updateFixedMonthlyExpense,
 } from "@/lib/supabase-persistence";
 
 const DEFAULT_INPUTS: FreedomInputs = {
@@ -71,6 +83,28 @@ const percentFormatter = new Intl.NumberFormat("es-UY", {
 const numberFormatter = new Intl.NumberFormat("es-UY", {
   maximumFractionDigits: 1,
 });
+
+function formatCurrencyAmount(currency: string, amount: number) {
+  try {
+    return new Intl.NumberFormat("es-UY", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${currency} ${numberFormatter.format(amount)}`;
+  }
+}
+
+function sortFixedMonthlyExpenses(expenses: FixedMonthlyExpense[]) {
+  return [...expenses].sort((a, b) => {
+    if (a.active !== b.active) {
+      return a.active ? -1 : 1;
+    }
+
+    return a.name.localeCompare(b.name, "es");
+  });
+}
 
 type Field = {
   id: keyof FreedomInputs;
@@ -204,6 +238,16 @@ export function LibertadDashboard() {
   const [confirmedTransactions, setConfirmedTransactions] = useState<
     ConfirmedFinancialTransaction[]
   >([]);
+  const [fixedMonthlyExpenses, setFixedMonthlyExpenses] = useState<
+    FixedMonthlyExpense[]
+  >([]);
+  const [fixedExpenseDraftText, setFixedExpenseDraftText] = useState("");
+  const [editingFixedExpenseId, setEditingFixedExpenseId] = useState("");
+  const [fixedExpenseEditDraft, setFixedExpenseEditDraft] =
+    useState<FixedMonthlyExpenseDraft>(() => createFixedMonthlyExpenseDraft(""));
+  const [fixedExpenseStatus, setFixedExpenseStatus] =
+    useState<SaveStatus>("idle");
+  const [fixedExpenseError, setFixedExpenseError] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const [dataLoading, setDataLoading] = useState(false);
@@ -260,6 +304,11 @@ export function LibertadDashboard() {
       setHasLoaded(false);
       setSaveStatus("idle");
       setSaveError("");
+      setFixedMonthlyExpenses([]);
+      setFixedExpenseDraftText("");
+      setEditingFixedExpenseId("");
+      setFixedExpenseStatus("idle");
+      setFixedExpenseError("");
       skipInitialDashboardSaveRef.current = true;
       skipInitialPortfolioSaveRef.current = true;
       skipInitialBotSaveRef.current = true;
@@ -276,6 +325,7 @@ export function LibertadDashboard() {
       queueMicrotask(() => {
         setHasLoaded(false);
         setConfirmedTransactions([]);
+        setFixedMonthlyExpenses([]);
       });
       return;
     }
@@ -292,8 +342,9 @@ export function LibertadDashboard() {
     Promise.all([
       loadDashboardData(supabase, userId),
       loadConfirmedTransactions(supabase, userId),
+      loadFixedMonthlyExpenses(supabase, userId),
     ])
-      .then(([dashboardData, transactions]) => {
+      .then(([dashboardData, transactions, fixedExpenses]) => {
         if (!isMounted) {
           return;
         }
@@ -305,6 +356,7 @@ export function LibertadDashboard() {
           dashboardData.roadmapSimulatedContribution,
         );
         setConfirmedTransactions(transactions);
+        setFixedMonthlyExpenses(fixedExpenses);
         setShowOnboardingCards(!dashboardData.onboardingSeen);
         setOnboardingSeen(dashboardData.onboardingSeen);
         skipInitialDashboardSaveRef.current = true;
@@ -665,6 +717,129 @@ export function LibertadDashboard() {
     setRoadmapSimulatedContribution(
       Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
     );
+  }
+
+  async function handleCreateFixedExpense() {
+    if (!supabase || !userId || !fixedExpenseDraftText.trim()) {
+      return;
+    }
+
+    setFixedExpenseStatus("saving");
+    setFixedExpenseError("");
+
+    try {
+      const createdExpense = await createFixedMonthlyExpense(
+        supabase,
+        userId,
+        createFixedMonthlyExpenseDraft(fixedExpenseDraftText),
+      );
+
+      setFixedMonthlyExpenses((current) =>
+        sortFixedMonthlyExpenses([createdExpense, ...current]),
+      );
+      setFixedExpenseDraftText("");
+      setFixedExpenseStatus("saved");
+    } catch (error) {
+      setFixedExpenseStatus("error");
+      setFixedExpenseError((error as Error).message);
+    }
+  }
+
+  function startEditingFixedExpense(expense: FixedMonthlyExpense) {
+    setEditingFixedExpenseId(expense.id);
+    setFixedExpenseEditDraft({
+      name: expense.name,
+      category: expense.category,
+      monthlyAmount: expense.monthlyAmount,
+      currency: expense.currency,
+      active: expense.active,
+      note: expense.note,
+    });
+    setFixedExpenseError("");
+  }
+
+  async function saveEditedFixedExpense(expense: FixedMonthlyExpense) {
+    if (!supabase || !userId) {
+      return;
+    }
+
+    setFixedExpenseStatus("saving");
+    setFixedExpenseError("");
+
+    try {
+      const updatedExpense = await updateFixedMonthlyExpense(supabase, userId, {
+        ...expense,
+        ...fixedExpenseEditDraft,
+      });
+
+      setFixedMonthlyExpenses((current) =>
+        sortFixedMonthlyExpenses(
+          current.map((item) =>
+            item.id === updatedExpense.id ? updatedExpense : item,
+          ),
+        ),
+      );
+      setEditingFixedExpenseId("");
+      setFixedExpenseStatus("saved");
+    } catch (error) {
+      setFixedExpenseStatus("error");
+      setFixedExpenseError((error as Error).message);
+    }
+  }
+
+  async function toggleFixedExpense(expense: FixedMonthlyExpense) {
+    if (!supabase || !userId) {
+      return;
+    }
+
+    setFixedExpenseStatus("saving");
+    setFixedExpenseError("");
+
+    try {
+      const updatedExpense = await updateFixedMonthlyExpense(supabase, userId, {
+        ...expense,
+        active: !expense.active,
+      });
+
+      setFixedMonthlyExpenses((current) =>
+        sortFixedMonthlyExpenses(
+          current.map((item) =>
+            item.id === updatedExpense.id ? updatedExpense : item,
+          ),
+        ),
+      );
+      setFixedExpenseStatus("saved");
+    } catch (error) {
+      setFixedExpenseStatus("error");
+      setFixedExpenseError((error as Error).message);
+    }
+  }
+
+  async function removeFixedExpense(expense: FixedMonthlyExpense) {
+    if (!supabase || !userId) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Eliminar "${expense.name}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setFixedExpenseStatus("saving");
+    setFixedExpenseError("");
+
+    try {
+      await deleteFixedMonthlyExpense(supabase, userId, expense.id);
+      setFixedMonthlyExpenses((current) =>
+        current.filter((item) => item.id !== expense.id),
+      );
+      setEditingFixedExpenseId("");
+      setFixedExpenseStatus("saved");
+    } catch (error) {
+      setFixedExpenseStatus("error");
+      setFixedExpenseError((error as Error).message);
+    }
   }
 
   function selectSection(section: AppSection) {
@@ -1069,54 +1244,74 @@ export function LibertadDashboard() {
           ) : null}
 
           {activeSection === "configuracion" ? (
-            <section className="libertad-surface rounded-lg p-5 sm:p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-stone-950">
-                    Datos base
-                  </h2>
-                  <p className="mt-1 text-sm leading-6 text-stone-600">
-                    Estos valores son tu escenario base. Las notas confirmadas
-                    se suman encima sin pisar tus supuestos.
-                  </p>
+            <>
+              <section className="libertad-surface rounded-lg p-5 sm:p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-stone-950">
+                      Datos base
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-stone-600">
+                      Estos valores son tu escenario base. Las notas confirmadas
+                      se suman encima sin pisar tus supuestos.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                {fields.map((field) => (
-                  <label key={field.id} className="grid gap-2">
-                    <span className="text-sm font-medium text-stone-700">
-                      {field.label}
-                    </span>
-                    <div className={inputShellClass}>
-                      {field.prefix ? (
-                        <span className="mr-2 text-sm font-semibold text-stone-500">
-                          {field.prefix}
-                        </span>
-                      ) : null}
-                      <input
-                        autoComplete="off"
-                        className={inputClass}
-                        inputMode="decimal"
-                        min="0"
-                        name={field.id}
-                        step={field.step}
-                        type="number"
-                        value={inputs[field.id]}
-                        onChange={(event) =>
-                          updateInput(field.id, event.target.value)
-                        }
-                      />
-                      {field.suffix ? (
-                        <span className="ml-2 text-sm font-semibold text-stone-500">
-                          {field.suffix}
-                        </span>
-                      ) : null}
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </section>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  {fields.map((field) => (
+                    <label key={field.id} className="grid gap-2">
+                      <span className="text-sm font-medium text-stone-700">
+                        {field.label}
+                      </span>
+                      <div className={inputShellClass}>
+                        {field.prefix ? (
+                          <span className="mr-2 text-sm font-semibold text-stone-500">
+                            {field.prefix}
+                          </span>
+                        ) : null}
+                        <input
+                          autoComplete="off"
+                          className={inputClass}
+                          inputMode="decimal"
+                          min="0"
+                          name={field.id}
+                          step={field.step}
+                          type="number"
+                          value={inputs[field.id]}
+                          onChange={(event) =>
+                            updateInput(field.id, event.target.value)
+                          }
+                        />
+                        {field.suffix ? (
+                          <span className="ml-2 text-sm font-semibold text-stone-500">
+                            {field.suffix}
+                          </span>
+                        ) : null}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <FixedMonthlyExpensesPanel
+                actionStatus={fixedExpenseStatus}
+                draftText={fixedExpenseDraftText}
+                editingExpenseId={editingFixedExpenseId}
+                editDraft={fixedExpenseEditDraft}
+                error={fixedExpenseError}
+                expenses={fixedMonthlyExpenses}
+                loading={dataLoading && !hasLoaded}
+                onCancelEdit={() => setEditingFixedExpenseId("")}
+                onCreate={handleCreateFixedExpense}
+                onDelete={removeFixedExpense}
+                onDraftTextChange={setFixedExpenseDraftText}
+                onEditDraftChange={setFixedExpenseEditDraft}
+                onSaveEdit={saveEditedFixedExpense}
+                onStartEdit={startEditingFixedExpense}
+                onToggle={toggleFixedExpense}
+              />
+            </>
           ) : null}
 
           {activeSection === "decisiones" ? (
@@ -1563,6 +1758,439 @@ function formatMonths(months?: number) {
   }
 
   return `${numberFormatter.format(months)} meses`;
+}
+
+function FixedMonthlyExpensesPanel({
+  expenses,
+  draftText,
+  editDraft,
+  editingExpenseId,
+  loading,
+  error,
+  actionStatus,
+  onDraftTextChange,
+  onEditDraftChange,
+  onCreate,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onToggle,
+  onDelete,
+}: {
+  expenses: FixedMonthlyExpense[];
+  draftText: string;
+  editDraft: FixedMonthlyExpenseDraft;
+  editingExpenseId: string;
+  loading: boolean;
+  error: string;
+  actionStatus: SaveStatus;
+  onDraftTextChange: (value: string) => void;
+  onEditDraftChange: (value: FixedMonthlyExpenseDraft) => void;
+  onCreate: () => void;
+  onStartEdit: (expense: FixedMonthlyExpense) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (expense: FixedMonthlyExpense) => void;
+  onToggle: (expense: FixedMonthlyExpense) => void;
+  onDelete: (expense: FixedMonthlyExpense) => void;
+}) {
+  const parsedDraft = draftText.trim()
+    ? createFixedMonthlyExpenseDraft(draftText)
+    : null;
+  const activeTotals = summarizeActiveFixedExpenses(expenses);
+  const totalLabel =
+    activeTotals.length > 0
+      ? activeTotals
+          .map((total) => formatCurrencyAmount(total.currency, total.amount))
+          .join(" + ")
+      : formatCurrencyAmount("USD", 0);
+
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl">
+          <h2 className="text-xl font-semibold text-stone-950">
+            Gastos fijos mensuales
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-stone-600">
+            Anota un gasto recurrente en texto simple. Se guarda como registro
+            estructurado y queda editable antes de usarlo en otra parte.
+          </p>
+        </div>
+        <div className="rounded-md border border-stone-200 bg-stone-50 px-4 py-3">
+          <p className="text-xs font-medium text-stone-500">Total activo</p>
+          <p className="libertad-number mt-1 text-lg font-semibold text-stone-950">
+            {totalLabel}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-stone-700">
+            Nuevo gasto fijo
+          </span>
+          <textarea
+            autoComplete="off"
+            className="libertad-field libertad-ledger min-h-32 resize-y rounded-md bg-white px-4 py-3 text-base leading-8 text-stone-950 placeholder:text-stone-500"
+            name="fixed-expense-capture"
+            placeholder="Ej: Alquiler apartamento UYU 42000..."
+            value={draftText}
+            onChange={(event) => onDraftTextChange(event.target.value)}
+          />
+        </label>
+
+        <div className="libertad-soft-panel rounded-md p-4">
+          <p className="text-sm font-semibold text-stone-800">
+            Vista estructurada
+          </p>
+          {parsedDraft ? (
+            <div className="mt-3 grid gap-3">
+              <FixedExpensePreviewStat label="Nombre" value={parsedDraft.name} />
+              <FixedExpensePreviewStat label="Categoria" value={parsedDraft.category} />
+              <FixedExpensePreviewStat
+                label="Monto mensual"
+                value={formatCurrencyAmount(
+                  parsedDraft.currency,
+                  parsedDraft.monthlyAmount,
+                )}
+              />
+            </div>
+          ) : (
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              Escribe una linea como si fuera una nota. Si falta categoria,
+              monto o moneda, se completan con defaults editables.
+            </p>
+          )}
+          <button
+            className="mt-4 h-11 w-full rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition-colors hover:bg-stone-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:bg-stone-300 disabled:text-stone-600"
+            disabled={actionStatus === "saving" || !draftText.trim()}
+            type="button"
+            onClick={onCreate}
+          >
+            {actionStatus === "saving" ? "Guardando..." : "Crear gasto fijo"}
+          </button>
+        </div>
+      </div>
+
+      <div aria-live="polite" className="mt-4 min-h-6">
+        {error ? (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-950">
+            {error}
+          </p>
+        ) : actionStatus === "saved" ? (
+          <p className="text-sm font-medium text-emerald-800">Guardado.</p>
+        ) : null}
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
+        <div className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-[var(--surface-muted)] px-4 py-2">
+          <p className="text-sm font-semibold text-stone-800">
+            Lista de gastos fijos
+          </p>
+          <p className="text-xs font-medium text-stone-500">
+            {expenses.length} registro(s)
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="grid gap-2 bg-white p-4">
+            <div className="h-14 animate-pulse rounded-md bg-stone-100" />
+            <div className="h-14 animate-pulse rounded-md bg-stone-100" />
+          </div>
+        ) : expenses.length === 0 ? (
+          <div className="bg-white p-4">
+            <EmptyState
+              title="Sin gastos fijos"
+              body="Crea el primero con una linea de texto y luego ajusta los campos."
+            />
+          </div>
+        ) : (
+          <div className="divide-y divide-stone-200 bg-white">
+            {expenses.map((expense) =>
+              editingExpenseId === expense.id ? (
+                <FixedExpenseEditRow
+                  key={expense.id}
+                  draft={editDraft}
+                  expense={expense}
+                  saving={actionStatus === "saving"}
+                  onCancel={onCancelEdit}
+                  onChange={onEditDraftChange}
+                  onDelete={() => onDelete(expense)}
+                  onSave={() => onSaveEdit(expense)}
+                />
+              ) : (
+                <FixedExpenseListRow
+                  key={expense.id}
+                  expense={expense}
+                  saving={actionStatus === "saving"}
+                  onDelete={() => onDelete(expense)}
+                  onEdit={() => onStartEdit(expense)}
+                  onToggle={() => onToggle(expense)}
+                />
+              ),
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FixedExpenseListRow({
+  expense,
+  saving,
+  onEdit,
+  onToggle,
+  onDelete,
+}: {
+  expense: FixedMonthlyExpense;
+  saving: boolean;
+  onEdit: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-semibold text-stone-950">
+            {expense.name}
+          </p>
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+              expense.active
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-stone-200 bg-stone-50 text-stone-600"
+            }`}
+          >
+            {expense.active ? "Activo" : "Inactivo"}
+          </span>
+        </div>
+        <p className="mt-1 text-sm leading-6 text-stone-600">
+          {expense.category} -{" "}
+          <span className="libertad-number font-semibold text-stone-900">
+            {formatCurrencyAmount(expense.currency, expense.monthlyAmount)}
+          </span>
+        </p>
+        {expense.note ? (
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">
+            {expense.note}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2 lg:justify-end">
+        <button
+          className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-medium text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:text-stone-400"
+          disabled={saving}
+          type="button"
+          onClick={onToggle}
+        >
+          {expense.active ? "Desactivar" : "Activar"}
+        </button>
+        <button
+          className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-medium text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:text-stone-400"
+          disabled={saving}
+          type="button"
+          onClick={onEdit}
+        >
+          Editar
+        </button>
+        <button
+          className="h-10 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 disabled:text-red-900 disabled:opacity-45"
+          disabled={saving}
+          type="button"
+          onClick={onDelete}
+        >
+          Eliminar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FixedExpenseEditRow({
+  expense,
+  draft,
+  saving,
+  onChange,
+  onSave,
+  onCancel,
+  onDelete,
+}: {
+  expense: FixedMonthlyExpense;
+  draft: FixedMonthlyExpenseDraft;
+  saving: boolean;
+  onChange: (draft: FixedMonthlyExpenseDraft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="grid gap-4 bg-stone-50 px-4 py-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-stone-700">Nombre</span>
+          <input
+            autoComplete="off"
+            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950"
+            name={`fixed-expense-name-${expense.id}`}
+            type="text"
+            value={draft.name}
+            onChange={(event) =>
+              onChange({ ...draft, name: event.target.value })
+            }
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-stone-700">Categoria</span>
+          <select
+            autoComplete="off"
+            className="libertad-field h-11 rounded-md bg-white px-3 text-sm font-semibold text-stone-950"
+            name={`fixed-expense-category-${expense.id}`}
+            value={draft.category}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                category: event.target.value as FixedMonthlyExpenseDraft["category"],
+              })
+            }
+          >
+            {FIXED_MONTHLY_EXPENSE_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-stone-700">
+            Monto mensual
+          </span>
+          <input
+            autoComplete="off"
+            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950"
+            inputMode="decimal"
+            min="0"
+            name={`fixed-expense-amount-${expense.id}`}
+            step="1"
+            type="number"
+            value={draft.monthlyAmount}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                monthlyAmount: Number.isFinite(Number(event.target.value))
+                  ? Number(event.target.value)
+                  : 0,
+              })
+            }
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-stone-700">Moneda</span>
+          <select
+            autoComplete="off"
+            className="libertad-field h-11 rounded-md bg-white px-3 text-sm font-semibold text-stone-950"
+            name={`fixed-expense-currency-${expense.id}`}
+            value={draft.currency}
+            onChange={(event) =>
+              onChange({ ...draft, currency: event.target.value })
+            }
+          >
+            {FIXED_MONTHLY_EXPENSE_CURRENCIES.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label className="flex min-h-11 items-center gap-3 rounded-md border border-stone-200 bg-white px-3 py-2">
+        <input
+          checked={draft.active}
+          className="h-4 w-4 accent-emerald-700"
+          name={`fixed-expense-active-${expense.id}`}
+          type="checkbox"
+          onChange={(event) =>
+            onChange({ ...draft, active: event.target.checked })
+          }
+        />
+        <span className="text-sm font-medium text-stone-700">
+          Gasto fijo activo
+        </span>
+      </label>
+
+      <label className="grid gap-2">
+        <span className="text-sm font-medium text-stone-700">
+          Nota opcional
+        </span>
+        <textarea
+          autoComplete="off"
+          className="libertad-field min-h-24 resize-y rounded-md px-3 py-2 text-sm leading-6 text-stone-950"
+          name={`fixed-expense-note-${expense.id}`}
+          value={draft.note}
+          onChange={(event) =>
+            onChange({ ...draft, note: event.target.value })
+          }
+        />
+      </label>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <button
+          className="h-10 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 disabled:text-red-900 disabled:opacity-45"
+          disabled={saving}
+          type="button"
+          onClick={onDelete}
+        >
+          Eliminar
+        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:text-stone-400"
+            disabled={saving}
+            type="button"
+            onClick={onCancel}
+          >
+            Cancelar
+          </button>
+          <button
+            className="h-10 rounded-md bg-stone-950 px-3 text-sm font-semibold text-white transition-colors hover:bg-stone-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:bg-stone-300 disabled:text-stone-600"
+            disabled={saving}
+            type="button"
+            onClick={onSave}
+          >
+            {saving ? "Guardando..." : "Guardar cambios"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FixedExpensePreviewStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-stone-500">{label}</p>
+      <p className="libertad-number mt-1 break-words text-base font-semibold text-stone-950">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-stone-300 bg-white p-4">
+      <p className="text-sm font-semibold text-stone-800">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-stone-600">{body}</p>
+    </div>
+  );
 }
 
 function SectionPlaceholder({

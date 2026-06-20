@@ -107,6 +107,14 @@
 * Se evita guardar automaticamente datos default de dashboard, cartera y bot al cargar una cuenta vacia.
 * Se evita crear una nota vacia en Supabase solo por abrir el modulo de notas.
 
+## v1.9.0 - Gastos Fijos Mensuales
+
+* Seccion "Gastos fijos mensuales" dentro de Configuracion.
+* Captura en texto simple con conversion a registros estructurados editables.
+* CRUD Supabase para crear, editar, eliminar y activar/desactivar gastos fijos por usuario.
+* Total mensual informativo de gastos activos, separado de las formulas del dashboard.
+* Migracion `fixed_monthly_expenses` con RLS por usuario.
+
 Todas las versiones verificadas con:
 
 * npm run lint

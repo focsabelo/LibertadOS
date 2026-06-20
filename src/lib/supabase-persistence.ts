@@ -14,6 +14,12 @@ import {
   type ConfirmedFinancialTransaction,
   type FinancialNote,
 } from "./financial-notes";
+import {
+  fixedMonthlyExpenseDraftToRow,
+  fixedMonthlyExpenseFromRow,
+  type FixedMonthlyExpense,
+  type FixedMonthlyExpenseDraft,
+} from "./fixed-monthly-expenses";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -329,6 +335,87 @@ export async function loadConfirmedTransactions(
   }
 
   return (data ?? []).map(transactionFromRow);
+}
+
+export async function loadFixedMonthlyExpenses(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<FixedMonthlyExpense[]> {
+  const { data, error } = await supabase
+    .from("fixed_monthly_expenses")
+    .select(
+      "id, name, category, monthly_amount, currency, is_active, note, created_at, updated_at",
+    )
+    .eq("user_id", userId)
+    .order("is_active", { ascending: false })
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(fixedMonthlyExpenseFromRow);
+}
+
+export async function createFixedMonthlyExpense(
+  supabase: SupabaseClient,
+  userId: string,
+  expense: FixedMonthlyExpenseDraft,
+): Promise<FixedMonthlyExpense> {
+  const { data, error } = await supabase
+    .from("fixed_monthly_expenses")
+    .insert({
+      user_id: userId,
+      ...fixedMonthlyExpenseDraftToRow(expense),
+    })
+    .select(
+      "id, name, category, monthly_amount, currency, is_active, note, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return fixedMonthlyExpenseFromRow(data as JsonRecord);
+}
+
+export async function updateFixedMonthlyExpense(
+  supabase: SupabaseClient,
+  userId: string,
+  expense: FixedMonthlyExpense,
+): Promise<FixedMonthlyExpense> {
+  const { data, error } = await supabase
+    .from("fixed_monthly_expenses")
+    .update(fixedMonthlyExpenseDraftToRow(expense))
+    .eq("id", expense.id)
+    .eq("user_id", userId)
+    .select(
+      "id, name, category, monthly_amount, currency, is_active, note, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return fixedMonthlyExpenseFromRow(data as JsonRecord);
+}
+
+export async function deleteFixedMonthlyExpense(
+  supabase: SupabaseClient,
+  userId: string,
+  expenseId: string,
+) {
+  const { error } = await supabase
+    .from("fixed_monthly_expenses")
+    .delete()
+    .eq("user_id", userId)
+    .eq("id", expenseId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function upsertFinancialNote(
