@@ -115,6 +115,11 @@
 * Total mensual informativo de gastos activos, separado de las formulas del dashboard.
 * Migracion `fixed_monthly_expenses` con RLS por usuario.
 
+## v1.9.1 - Estabilidad de Gastos Fijos
+
+* Los eventos de refresco de sesion de Supabase ya no vacian la lista de gastos fijos al cambiar de pestana del navegador.
+* Regresion automatizada para preservar datos privados en memoria cuando el usuario autenticado no cambia.
+
 Todas las versiones verificadas con:
 
 * npm run lint

@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import { shouldResetPrivateDataForAuthChange } from "@/lib/auth-state";
 import {
   FinancialNotesModule,
   confirmedTransactionsSummary,
@@ -262,6 +263,7 @@ export function LibertadDashboard() {
   const skipInitialDashboardSaveRef = useRef(true);
   const skipInitialPortfolioSaveRef = useRef(true);
   const skipInitialBotSaveRef = useRef(true);
+  const currentUserIdRef = useRef<string | null>(null);
   const userId = session?.user.id ?? null;
 
   const handleTransactionsChange = useCallback(
@@ -289,6 +291,7 @@ export function LibertadDashboard() {
           setLoadError(error.message);
         }
 
+        currentUserIdRef.current = data.session?.user.id ?? null;
         setSession(data.session);
       })
       .finally(() => {
@@ -300,7 +303,16 @@ export function LibertadDashboard() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      const previousUserId = currentUserIdRef.current;
+      const nextUserId = session?.user.id ?? null;
+
+      currentUserIdRef.current = nextUserId;
       setSession(session);
+
+      if (!shouldResetPrivateDataForAuthChange(previousUserId, nextUserId)) {
+        return;
+      }
+
       setHasLoaded(false);
       setSaveStatus("idle");
       setSaveError("");

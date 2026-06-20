@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:parser": "node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\" && tsc --module commonjs --target ES2020 --moduleResolution node --outDir .tmp/parser-tests --rootDir . tests/parser-regression.ts tests/fixed-monthly-expenses-regression.ts src/lib/financial-notes.ts src/lib/finance.ts src/lib/fixed-monthly-expenses.ts && node .tmp/parser-tests/tests/parser-regression.js && node .tmp/parser-tests/tests/fixed-monthly-expenses-regression.js && node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\""
+    "test:parser": "node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\" && tsc --module commonjs --target ES2020 --moduleResolution node --outDir .tmp/parser-tests --rootDir . tests/parser-regression.ts tests/fixed-monthly-expenses-regression.ts tests/auth-state-regression.ts src/lib/financial-notes.ts src/lib/finance.ts src/lib/fixed-monthly-expenses.ts src/lib/auth-state.ts && node .tmp/parser-tests/tests/parser-regression.js && node .tmp/parser-tests/tests/fixed-monthly-expenses-regression.js && node .tmp/parser-tests/tests/auth-state-regression.js && node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

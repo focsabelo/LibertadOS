@@ -41,6 +41,56 @@ npm run dev
 
 The app normally runs at `http://127.0.0.1:3000` or `http://localhost:3000`.
 
+## Git / GitHub Rules
+
+After completing any meaningful change, prepare the project for GitHub.
+
+Before committing:
+
+- Run `npm run lint`.
+- Run `npm run build`.
+- Run relevant tests if they exist.
+- Run `git status`.
+- Review `git diff` and untracked files.
+- Never commit `.env`, `.env.local`, secrets, API keys, `service_role` keys, or private credentials.
+- Do not use `git add .` blindly if there are unrelated or suspicious files.
+- Keep commits scoped to the actual task.
+
+If the change is valid and the working tree only contains intended files:
+
+- Stage only the relevant files.
+- Create a clear commit message describing the real change.
+- Push only when the user asked for it, or when the task explicitly includes publishing/deploying.
+- Prefer pushing the current task branch. Push to `origin main` only when the repo workflow expects direct main commits.
+
+Use commands like:
+
+```bash
+git status
+git diff
+git add <relevant-files>
+git diff --cached
+git commit -m "Clear description of the change"
+git push origin <branch>
+```
+
+Do not commit or push if:
+
+- lint/build fails.
+- Relevant tests fail.
+- Secrets appear in `git status`, `git diff`, or staged files.
+- Unrelated files changed.
+- The user explicitly asked not to commit or push.
+- The task is exploratory or incomplete.
+- The target branch is unclear.
+
+At the end, report:
+
+- Commit hash, if committed.
+- Files committed.
+- Whether push succeeded.
+- Whether Vercel should deploy automatically.
+
 ## Changelog
 
 - For any user-facing change, feature, bugfix, behavior change, financial logic change, or meaningful design update, update `CHANGELOG.md` in the same task.
