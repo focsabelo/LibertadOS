@@ -81,6 +81,18 @@ Core financial utilities live in `src/lib/finance.ts` and note parsing logic liv
 - Avoid unnecessary nested cards. Use cards only for repeated items, framed tools, and meaningful groupings.
 - Keep labels and copy practical, calm, and concise.
 
+## Frontend Skills
+
+Para cualquier cambio relacionado con frontend, UI, UX, componentes visuales, layout, responsive design, accesibilidad, dashboard, modales, formularios, graficos, visualizaciones o estilos, primero leer y aplicar las skills de frontend del proyecto:
+
+- `frontend-design` (`.agents/skills/frontend/SKILL.md`) para diseno general, pantallas, componentes, modales y dashboard.
+- `d3-viz` (`.agents/skills/frontend2/SKILL.md`) cuando haya graficos, dashboards, visualizaciones o datos.
+- `web-design-guidelines` (`.agents/skills/frontend3/SKILL.md`) para consistencia visual, jerarquia, spacing, accesibilidad y diseno responsive.
+
+No implementar cambios frontend sin consultar esas skills. Si la tarea incluye graficos o visualizaciones, usar especialmente `d3-viz`. Si la tarea incluye diseno general, pantallas, componentes, modales o dashboard, usar `frontend-design` y `web-design-guidelines`.
+
+No modificar logica de negocio salvo que sea necesario para conectar la UI. Mantener el estilo actual de Libertad OS: calmado, serio, premium, claro, sin estetica fintech generica, sin ruido visual y respetando la confirmacion manual sagrada.
+
 ## Impeccable
 
 Use Impeccable when changing UI, UX, layout, visual hierarchy, copy, empty states, responsive behavior, or accessibility.

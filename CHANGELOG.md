@@ -41,6 +41,58 @@
 * Copy de confirmacion aclarado: los movimientos solo entran al dashboard con confirmacion.
 * Ajustes mobile de touch targets en botones y controles criticos.
 
+## v1.4.0 - Detector de Inflacion del Estilo de Vida
+
+* Panel de inflacion del estilo de vida en el dashboard.
+* Comparacion de ingresos, gastos, ahorro estimado y tasa de ahorro contra el mes anterior.
+* Riesgo bajo, medio, alto o sin datos usando solo transacciones confirmadas.
+* Calculo del porcentaje del aumento de ingreso absorbido por nuevos gastos.
+* Senales para gasto que acompana ingresos, caida de tasa de ahorro, compras grandes recientes y gastos criticos.
+* Recomendaciones conectadas con Palancas FIRE, regla 70/20/10, colchon 5%, compras grandes y vivienda/transporte/comida.
+* Tests de la logica de inflacion del estilo de vida, incluyendo intenciones y sugerencias no confirmadas fuera del conteo real.
+
+## v1.5.0 - Deuda Real / TAE
+
+* Modelo minimo `DebtAnalysis` para deuda real, compras en cuotas, tarjeta, prestamos, hipotecas, auto y pago minimo.
+* Calculo de cuota mensual, costo total, intereses, costo anual, TAE estimada, impacto FIRE y presion sobre margen mensual.
+* Parser ampliado para distinguir deuda real, intencion, negacion, gasto con tarjeta, compra en cuotas, financiacion y pago minimo.
+* "12 cuotas de 200" aislado queda como analisis potencial y no se puede confirmar sin verbo real.
+* Tarjeta de credito no asume cuotas ni intereses si no hay datos explicitos.
+* Bloque "Costo real de deuda" en datos detectados, con campos faltantes visibles.
+* Panel "Carga de deuda confirmada" en el dashboard usando solo movimientos confirmados.
+* Prevencion de doble conteo: el dashboard mensual/FIRE usa cuota mensual cuando existe, y costo total queda separado.
+* Tests de parser y carga de deuda para intenciones, negaciones, cuotas, tarjeta, hipoteca, auto y prestamos.
+
+## v1.6.0 - Cartera Objetivo
+
+* Panel de cartera objetivo en el dashboard.
+* Clases de activo: ETF USA, ETF Europa, Emergentes, Oro, Bitcoin y Bienes raices.
+* Objetivos editables con advertencia cuando no suman 100%.
+* Montos actuales manuales o derivados de inversiones confirmadas compatibles.
+* Desbalance absoluto, desbalance porcentual y estado por clase: sobrepeso, bajo peso o alineado.
+* Inversiones no confirmadas, intenciones, pensamientos, negaciones y simulaciones fuera de la cartera actual.
+* Visualizacion sobria de objetivo vs actual sin recomendacion financiera.
+
+## v1.6.1 - Navegacion y Captura Premium
+
+* Navegacion interna por secciones: Dashboard, Notas, Decisiones, Cartera, Deuda, Roadmap, Macro y Config.
+* Dashboard convertido en vista principal resumida con atencion actual y accion semanal.
+* Notas, cartera, deuda y configuracion separadas como vistas dedicadas.
+* Pantallas reservadas para decisiones, roadmap y macro sin mezclar datos reales con simulaciones.
+* Vista de notas ampliada con editor de captura mas alto y estructura lateral mas espaciosa.
+* Correccion de IDs duplicados al navegar por hash entre secciones.
+* Verificacion visual desktop/mobile sin overflow horizontal.
+
+## v1.7.0 - Roadmap Patrimonial
+
+* Modelo `WealthMilestone` para hitos patrimoniales basados en capital invertido o patrimonio neto.
+* Calculo de progreso, distancia en dolares, porcentaje completado y meses estimados por hito.
+* Separacion entre progreso real y simulacion de mayor aporte mensual.
+* Hitos iniciales: US$50.000 invertidos, primer inmueble, 5 propiedades, US$500.000, retiro parcial 5% anual y US$1.000.000.
+* Pantalla dedicada de Roadmap con proximo hito prioritario, lista de hitos y supuesto editable de aporte simulado.
+* Impacto de gastos confirmados expresado como retraso aproximado en meses sobre el hito.
+* Tests de calculo para siguiente hito, hitos alcanzados y simulacion de mayor aporte.
+
 Todas las versiones verificadas con:
 
 * npm run lint

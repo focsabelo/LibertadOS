@@ -1,4 +1,11 @@
-import { freedomNumber } from "./finance";
+import {
+  calculateDebtTotals,
+  freedomNumber,
+  type DebtAnalysis,
+  type DebtKind,
+  type DebtRisk,
+  type DebtUse,
+} from "./finance";
 
 export type FinancialType =
   | "gasto"
@@ -10,6 +17,12 @@ export type FinancialType =
 
 export type TransactionIntent = "real" | "intencion" | "pensado" | "negado";
 export type AntiErrorRiskLevel = "bajo" | "medio" | "alto";
+export type AntiErrorAction =
+  | "esperar"
+  | "revisar"
+  | "descartar"
+  | "confirmar"
+  | "convertir_en_plan";
 
 export type AntiErrorReview = {
   applies: boolean;
@@ -21,6 +34,7 @@ export type AntiErrorReview = {
   annualCost: number;
   fireImpact: number;
   investmentAlternative: number;
+  suggestedAction: AntiErrorAction;
   recommendation?: string;
   confirmableBlockReason?: string;
 };
@@ -51,6 +65,7 @@ export type DetectedFinancialItem = {
   sourceText: string;
   incomeIncrease?: boolean;
   ignored?: boolean;
+  debt?: DebtAnalysis;
   antiErrorReview?: AntiErrorReview;
 };
 
@@ -275,17 +290,27 @@ export function recalculateDetectedFinancialItem(item: DetectedFinancialItem) {
   const impulse =
     item.impulse ||
     detectImpulse(normalizedText, item.category, item.amount);
+  const debt = buildDebtAnalysis({
+    amount: item.amount,
+    category: item.category,
+    type: item.type,
+    recurring: item.recurring,
+    intent: item.intent,
+    normalizedText,
+  });
   const freedomImpact = calculateFreedomImpact({
     amount: item.amount,
     type: item.type,
     intent: item.intent,
     recurring: item.recurring,
     normalizedText,
+    debt,
   });
 
   return {
     ...item,
     impulse,
+    debt,
     freedomImpact,
     antiErrorReview: buildAntiErrorReview({
       amount: item.amount,
@@ -294,9 +319,9 @@ export function recalculateDetectedFinancialItem(item: DetectedFinancialItem) {
       type: item.type,
       recurring: item.recurring,
       intent: item.intent,
-      text: item.sourceText,
       normalizedText,
       freedomImpact,
+      debt,
     }),
   };
 }
@@ -327,7 +352,17 @@ function buildItem({
   let type = detectType(normalizedText);
   const category = detectCategory(normalizedText, type, indexHint);
 
-  if (category === "inversion") {
+  if (
+    [
+      "inversion",
+      "etf_usa",
+      "etf_europa",
+      "emergentes",
+      "oro",
+      "bitcoin",
+      "bienes_raices",
+    ].includes(category)
+  ) {
     type = "inversion";
   }
 
@@ -349,13 +384,26 @@ function buildItem({
   const incomeIncrease = type === "ingreso" && detectIncomeIncrease(normalizedText);
   const detectedIntent = detectIntent(normalizedText);
   const intent =
-    effectiveAmount === 0 && detectedIntent === "real" ? "pensado" : detectedIntent;
+    effectiveAmount === 0 && detectedIntent === "real"
+      ? "pensado"
+      : shouldTreatDebtAsPotential(normalizedText, type, detectedIntent)
+        ? "pensado"
+        : detectedIntent;
+  const debt = buildDebtAnalysis({
+    amount: effectiveAmount,
+    category,
+    type,
+    recurring,
+    intent,
+    normalizedText,
+  });
   const freedomImpact = calculateFreedomImpact({
     amount: effectiveAmount,
     type,
     intent,
     recurring,
     normalizedText,
+    debt,
   });
 
   return {
@@ -372,6 +420,7 @@ function buildItem({
     freedomImpact,
     sourceText: text || "Captura sin texto",
     incomeIncrease,
+    debt,
     antiErrorReview: buildAntiErrorReview({
       amount: effectiveAmount,
       currency,
@@ -379,9 +428,9 @@ function buildItem({
       type,
       recurring,
       intent,
-      text,
       normalizedText,
       freedomImpact,
+      debt,
     }),
   };
 }
@@ -416,6 +465,7 @@ function detectType(text: string): FinancialType {
       "financiado",
       "financiacion",
       "credito",
+      "hipoteca",
     ])
   ) {
     return "deuda";
@@ -458,6 +508,53 @@ function detectCategory(text: string, type: FinancialType, indexHint: number) {
     return "auto";
   }
 
+  if (type === "inversion") {
+    if (hasAny(text, ["etf usa", "s&p", "sp500", "voo", "vti", "qqq"])) {
+      return "etf_usa";
+    }
+
+    if (hasAny(text, ["etf europa", "europa", "vwcg", "imeu"])) {
+      return "etf_europa";
+    }
+
+    if (
+      hasAny(text, [
+        "emergentes",
+        "mercados emergentes",
+        "emerging",
+        "eem",
+        "iemg",
+      ])
+    ) {
+      return "emergentes";
+    }
+
+    if (hasAny(text, ["oro", "gold", "gld"])) {
+      return "oro";
+    }
+
+    if (hasAny(text, ["bitcoin", "btc"])) {
+      return "bitcoin";
+    }
+
+    if (
+      hasAny(text, [
+        "bienes raices",
+        "real estate",
+        "reits",
+        "reit",
+        "inmueble",
+        "propiedad",
+      ])
+    ) {
+      return "bienes_raices";
+    }
+
+    if (hasAny(text, ["etf", "acciones", "bonos", "inversion"])) {
+      return "inversion";
+    }
+  }
+
   if (hasAny(text, ["alquiler", "hipoteca", "expensas", "luz", "agua", "vivienda"])) {
     return "vivienda";
   }
@@ -470,16 +567,16 @@ function detectCategory(text: string, type: FinancialType, indexHint: number) {
     return "comida";
   }
 
+  if (hasAny(text, ["viaje", "pasaje", "hotel", "vacaciones", "escapada"])) {
+    return "viaje";
+  }
+
   if (hasAny(text, ["ropa", "zapat", "shopping", "lujo", "cartera cara"])) {
     return "ropa";
   }
 
   if (hasAny(text, ["celular", "iphone", "telefono", "notebook", "laptop", "macbook"])) {
     return "tecnologia";
-  }
-
-  if (hasAny(text, ["viaje", "pasaje", "hotel", "vacaciones", "escapada"])) {
-    return "viaje";
   }
 
   if (hasAny(text, ["salida", "boliche", "bar caro", "cena cara", "restaurante caro"])) {
@@ -492,10 +589,6 @@ function detectCategory(text: string, type: FinancialType, indexHint: number) {
 
   if (hasAny(text, ["colchon", "liquidez", "emergencia"])) {
     return "colchon";
-  }
-
-  if (hasAny(text, ["etf", "bitcoin", "acciones", "bonos", "inversion"])) {
-    return "inversion";
   }
 
   if (type === "ingreso") {
@@ -518,6 +611,8 @@ function detectIntent(text: string): TransactionIntent {
       "no compré",
       "no pague",
       "no pagué",
+      "no saque",
+      "no saqué",
       "no lo hice",
       "no lo compre",
       "no lo compré",
@@ -582,9 +677,333 @@ function detectIntent(text: string): TransactionIntent {
   return "real";
 }
 
+function shouldTreatDebtAsPotential(
+  text: string,
+  type: FinancialType,
+  intent: TransactionIntent,
+) {
+  return (
+    type === "deuda" &&
+    intent === "real" &&
+    hasAny(text, ["cuotas"]) &&
+    !hasRealDebtVerb(text) &&
+    !hasAny(text, ["hipoteca", "cuota del auto", "cuota de auto", "cuota auto"])
+  );
+}
+
+function buildDebtAnalysis({
+  amount,
+  category,
+  type,
+  recurring,
+  intent,
+  normalizedText,
+}: {
+  amount: number;
+  category: string;
+  type: FinancialType;
+  recurring: boolean;
+  intent: TransactionIntent;
+  normalizedText: string;
+}): DebtAnalysis | undefined {
+  if (type !== "deuda") {
+    return undefined;
+  }
+
+  const kind = detectDebtKind(normalizedText, category);
+  const termMonths = detectDebtTermMonths(normalizedText);
+  const installmentAmount = detectDebtInstallmentAmount(
+    normalizedText,
+    amount,
+    kind,
+    recurring,
+  );
+  const principal =
+    shouldTreatAmountAsDebtPrincipal(normalizedText, kind, installmentAmount)
+      ? amount
+      : undefined;
+  const annualRate = detectDebtAnnualRate(normalizedText);
+  const totals = calculateDebtTotals({
+    principal,
+    installmentAmount,
+    termMonths,
+    annualRate,
+  });
+  const missingFields = debtMissingFields({
+    kind,
+    principal,
+    installmentAmount: totals.installmentAmount,
+    termMonths,
+    annualRate,
+  });
+  const signals = debtSignals({
+    kind,
+    intent,
+    monthlyMarginImpact: totals.monthlyMarginImpact,
+    missingFields,
+  });
+
+  return {
+    kind,
+    principal,
+    installmentAmount:
+      totals.installmentAmount > 0 ? totals.installmentAmount : undefined,
+    termMonths: termMonths || undefined,
+    annualRate,
+    effectiveAnnualRate:
+      totals.effectiveAnnualRate && totals.effectiveAnnualRate > 0
+        ? totals.effectiveAnnualRate
+        : undefined,
+    totalCost: totals.totalCost,
+    totalInterest: totals.totalInterest,
+    annualCost: totals.annualCost,
+    monthlyMarginImpact: totals.monthlyMarginImpact,
+    fireImpact: totals.fireImpact,
+    salaryDependencyIncrease: totals.salaryDependencyIncrease,
+    use: detectDebtUse(normalizedText, kind),
+    risk: debtRisk({ kind, missingFields, normalizedText }),
+    signals,
+    missingFields,
+  };
+}
+
+function detectDebtKind(text: string, category: string): DebtKind {
+  if (hasAny(text, ["minimo", "pago minimo", "solo el minimo"])) {
+    return "pago_minimo";
+  }
+
+  if (hasAny(text, ["hipoteca"])) {
+    return "hipoteca";
+  }
+
+  if (
+    category === "auto" ||
+    (hasAny(text, ["auto", "coche", "vehiculo", "moto"]) &&
+      hasAny(text, ["cuota", "prestamo", "financ"]))
+  ) {
+    return "auto";
+  }
+
+  if (detectInstallments(text) > 0 || hasAny(text, ["cuotas"])) {
+    return "compra_cuotas";
+  }
+
+  if (hasAny(text, ["prestamo"])) {
+    return "prestamo";
+  }
+
+  if (hasAny(text, ["financie", "financiar", "financiado", "financiacion"])) {
+    return "financiacion";
+  }
+
+  if (hasAny(text, ["debo", "deuda"])) {
+    return "deuda_informal";
+  }
+
+  if (hasAny(text, ["tarjeta", "tarjeta de credito", "visa", "mastercard"])) {
+    return hasAny(text, ["compre", "gaste", "pague"])
+      ? "gasto_tarjeta"
+      : "tarjeta";
+  }
+
+  return "deuda_informal";
+}
+
+function detectDebtUse(text: string, kind: DebtKind): DebtUse {
+  if (
+    hasAny(text, [
+      "herramienta",
+      "trabajo",
+      "negocio",
+      "productivo",
+      "inversion",
+      "invertir",
+    ])
+  ) {
+    return "herramienta";
+  }
+
+  if (
+    kind === "compra_cuotas" ||
+    kind === "gasto_tarjeta" ||
+    kind === "pago_minimo" ||
+    kind === "auto"
+  ) {
+    return "consumo";
+  }
+
+  return "desconocida";
+}
+
+function debtRisk({
+  kind,
+  missingFields,
+  normalizedText,
+}: {
+  kind: DebtKind;
+  missingFields: string[];
+  normalizedText: string;
+}): DebtRisk {
+  if (kind === "pago_minimo") {
+    return "alto";
+  }
+
+  if (hasAny(normalizedText, ["peligrosa", "me ahoga", "no llego", "atrasado"])) {
+    return "alto";
+  }
+
+  if (missingFields.includes("cuota mensual")) {
+    return "sin_datos";
+  }
+
+  return kind === "compra_cuotas" || kind === "financiacion" ? "medio" : "bajo";
+}
+
+function debtMissingFields({
+  kind,
+  principal,
+  installmentAmount,
+  termMonths,
+  annualRate,
+}: {
+  kind: DebtKind;
+  principal?: number;
+  installmentAmount: number;
+  termMonths: number;
+  annualRate?: number;
+}) {
+  const fields: string[] = [];
+
+  if (!principal && kind === "compra_cuotas" && installmentAmount > 0) {
+    fields.push("capital original");
+  }
+
+  if (!installmentAmount && kind !== "deuda_informal") {
+    fields.push("cuota mensual");
+  }
+
+  if (
+    !termMonths &&
+    !["hipoteca", "auto", "pago_minimo", "gasto_tarjeta", "deuda_informal"].includes(
+      kind,
+    )
+  ) {
+    fields.push("plazo");
+  }
+
+  if (!annualRate) {
+    fields.push("tasa anual");
+  }
+
+  return fields;
+}
+
+function debtSignals({
+  kind,
+  intent,
+  monthlyMarginImpact,
+  missingFields,
+}: {
+  kind: DebtKind;
+  intent: TransactionIntent;
+  monthlyMarginImpact: number;
+  missingFields: string[];
+}) {
+  const signals: string[] = [];
+
+  if (kind === "pago_minimo") {
+    signals.push("Pago minimo de tarjeta detectado.");
+  }
+
+  if (monthlyMarginImpact <= 0 && missingFields.includes("cuota mensual")) {
+    signals.push("Faltan cuota, plazo o tasa para estimar presion mensual.");
+  }
+
+  if (intent !== "real") {
+    signals.push("Analisis potencial: no entra al dashboard sin confirmacion real.");
+  }
+
+  return signals;
+}
+
+function shouldTreatAmountAsDebtPrincipal(
+  text: string,
+  kind: DebtKind,
+  installmentAmount: number,
+) {
+  if (kind === "compra_cuotas") {
+    return installmentAmount <= 0;
+  }
+
+  if (kind === "auto") {
+    return installmentAmount <= 0 || hasAny(text, ["debo"]);
+  }
+
+  return !["hipoteca", "pago_minimo"].includes(kind) || hasAny(text, ["debo"]);
+}
+
+function detectDebtInstallmentAmount(
+  text: string,
+  amount: number,
+  kind: DebtKind,
+  recurring: boolean,
+) {
+  const installmentAmount = detectInstallmentAmount(text);
+
+  if (installmentAmount > 0) {
+    return installmentAmount;
+  }
+
+  if (
+    kind === "hipoteca" ||
+    kind === "pago_minimo" ||
+    (kind === "auto" && hasAny(text, ["cuota", "mensual", "por mes", "cada mes"])) ||
+    (recurring && hasAny(text, ["cuota", "mensual", "por mes", "cada mes"]))
+  ) {
+    return amount;
+  }
+
+  return 0;
+}
+
+function detectDebtTermMonths(text: string) {
+  return detectInstallments(text) || detectMonths(text);
+}
+
+function detectDebtAnnualRate(text: string) {
+  const match = text.match(
+    /(?:tae|tasa|interes|interes anual|tea)\s*(?:de|del|a)?\s*(\d+(?:[.,]\d+)?)\s*%/,
+  );
+
+  return match ? parseAmount(match[1]) : undefined;
+}
+
+function hasRealDebtVerb(text: string) {
+  return hasAny(text, [
+    "compre",
+    "gaste",
+    "saque",
+    "financie",
+    "debo",
+    "tengo",
+    "pague",
+    "pedi",
+    "tome",
+    "contrate",
+  ]);
+}
+
 function detectRecurring(text: string, category: string) {
   return (
-    hasAny(text, ["mensual", "cada mes", "todos los meses", "recurrente", "suscripcion", "suscripción"]) ||
+    hasAny(text, [
+      "mensual",
+      "cada mes",
+      "todos los meses",
+      "por mes",
+      "recurrente",
+      "suscripcion",
+      "suscripción",
+    ]) ||
     ["vivienda"].includes(category)
   );
 }
@@ -621,9 +1040,9 @@ function buildAntiErrorReview({
   type,
   recurring,
   intent,
-  text,
   normalizedText,
   freedomImpact,
+  debt,
 }: {
   amount: number;
   currency: string;
@@ -631,9 +1050,9 @@ function buildAntiErrorReview({
   type: FinancialType;
   recurring: boolean;
   intent: TransactionIntent;
-  text: string;
   normalizedText: string;
   freedomImpact: number;
+  debt?: DebtAnalysis;
 }): AntiErrorReview | undefined {
   const signals = detectAntiErrorSignals({
     amount,
@@ -648,19 +1067,15 @@ function buildAntiErrorReview({
     return undefined;
   }
 
-  const installments = detectInstallments(normalizedText);
-  const installmentAmount = detectInstallmentAmount(text);
   const monthlyCost =
-    installmentAmount > 0
-      ? installmentAmount
-      : installments > 0 && amount > 0
-        ? amount / installments
-        : recurring
-          ? amount
-          : amount / 12;
+    debt?.monthlyMarginImpact !== undefined
+      ? debt.monthlyMarginImpact
+      : recurring
+        ? amount
+        : amount / 12;
   const annualCost =
-    installments > 0 && monthlyCost > 0
-      ? monthlyCost * Math.min(installments, 12)
+    debt?.annualCost !== undefined
+      ? debt.annualCost
       : recurring
         ? amount * 12
         : amount;
@@ -682,8 +1097,14 @@ function buildAntiErrorReview({
       : intent === "pensado"
         ? "Es una idea o decision en evaluacion. No se guarda como movimiento real."
         : intent === "negado"
-          ? "La nota dice que no ocurrio. No se guarda como movimiento real."
-          : undefined;
+        ? "La nota dice que no ocurrio. No se guarda como movimiento real."
+        : undefined;
+  const suggestedAction = antiErrorSuggestedAction({
+    intent,
+    riskLevel,
+    hasDebtSignal,
+    emotionalCount,
+  });
 
   return {
     applies: true,
@@ -695,12 +1116,45 @@ function buildAntiErrorReview({
     annualCost,
     fireImpact: freedomImpact,
     investmentAlternative: amount,
+    suggestedAction,
     recommendation:
       emotionalCount >= 2 || hasDebtSignal || riskLevel === "alto"
         ? "esperar 48 horas antes de decidir o confirmar"
         : undefined,
     confirmableBlockReason,
   };
+}
+
+function antiErrorSuggestedAction({
+  intent,
+  riskLevel,
+  hasDebtSignal,
+  emotionalCount,
+}: {
+  intent: TransactionIntent;
+  riskLevel: AntiErrorRiskLevel;
+  hasDebtSignal: boolean;
+  emotionalCount: number;
+}): AntiErrorAction {
+  if (intent === "negado") {
+    return "descartar";
+  }
+
+  if (intent !== "real") {
+    return riskLevel === "bajo" && !hasDebtSignal
+      ? "convertir_en_plan"
+      : "esperar";
+  }
+
+  if (hasDebtSignal) {
+    return "revisar";
+  }
+
+  if (riskLevel === "alto" || emotionalCount >= 2) {
+    return "esperar";
+  }
+
+  return "confirmar";
 }
 
 function detectAntiErrorSignals({
@@ -911,7 +1365,7 @@ function detectAntiErrorSignals({
 
   if (
     intent !== "real" &&
-    hasAny(text, ["compr", "gastar", "financ", "cambiar", "deberia", "conviene"])
+    hasAny(text, ["compr", "gastar", "financ", "cuota", "cambiar", "deberia", "conviene"])
   ) {
     signals.push({
       label: "Decision todavia no ejecutada",
@@ -953,6 +1407,12 @@ function shouldIgnoreNumberMatch(segment: string, match: RegExpMatchArray) {
 
 function detectInstallments(text: string) {
   const match = normalize(text).match(/(?:en|a)?\s*(\d{1,3})\s*cuotas?/);
+
+  return match ? parseAmount(match[1]) : 0;
+}
+
+function detectMonths(text: string) {
+  const match = normalize(text).match(/(?:a|en|por)?\s*(\d{1,3})\s*meses?/);
 
   return match ? parseAmount(match[1]) : 0;
 }
@@ -1080,12 +1540,14 @@ function calculateFreedomImpact({
   intent,
   recurring,
   normalizedText,
+  debt,
 }: {
   amount: number;
   type: FinancialType;
   intent: TransactionIntent;
   recurring: boolean;
   normalizedText: string;
+  debt?: DebtAnalysis;
 }) {
   if (
     amount <= 0 ||
@@ -1093,6 +1555,10 @@ function calculateFreedomImpact({
     !shouldShowFireImpact({ type, normalizedText })
   ) {
     return 0;
+  }
+
+  if (type === "deuda" && debt?.monthlyMarginImpact) {
+    return freedomNumber(debt.monthlyMarginImpact);
   }
 
   return freedomNumber(recurring ? amount : amount / 12);

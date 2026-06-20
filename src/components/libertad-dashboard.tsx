@@ -7,16 +7,35 @@ import {
 } from "@/components/financial-notes-module";
 import type { ConfirmedFinancialTransaction } from "@/lib/financial-notes";
 import {
+  analyzeConfirmedDebtLoad,
+  analyzeBotOpera24hs,
+  analyzeTargetPortfolio,
+  analyzeWealthRoadmap,
   annualSpend,
+  analyzeLifestyleInflation,
   completionPercent,
   coreExpenseShare,
+  DEFAULT_BOT_OPERA24HS_INVESTMENT,
+  DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   estimateYearsToTarget,
   fireReductionScenarios,
   freedomNumber,
+  normalizeBotOpera24hsInvestment,
+  normalizeTargetPortfolioSettings,
+  type BotOpera24hsInvestment,
   type FreedomInputs,
+  type InvestmentPolicySettings,
+  type MilestoneProgress,
+  type PortfolioAssetClass,
+  type TargetPortfolioSettings,
+  type WealthRoadmapAnalysis,
 } from "@/lib/finance";
 
 const STORAGE_KEY = "libertad-os-dashboard-v1";
+const PORTFOLIO_STORAGE_KEY = "libertad-os-target-portfolio-v1";
+const BOT_OPERA24HS_STORAGE_KEY = "libertad-os-bot-opera24hs-v1";
+const ROADMAP_STORAGE_KEY = "libertad-os-roadmap-v1";
+const ONBOARDING_STORAGE_KEY = "libertad-os-onboarding-seen-v1";
 
 const DEFAULT_INPUTS: FreedomInputs = {
   netWorth: 85000,
@@ -76,23 +95,102 @@ const fields: Field[] = [
   },
 ];
 
-const modules = [
-  { label: "Dashboard", href: "#dashboard", active: true },
-  { label: "Notas", href: "#notas", active: false },
-  { label: "Simulador", href: "#notas", active: false },
-  { label: "Gastos", href: "#notas", active: false },
-  { label: "Cartera", href: "#notas", active: false },
-  { label: "Anti-errores", href: "#notas", active: false },
+type AppSection =
+  | "dashboard"
+  | "notas"
+  | "decisiones"
+  | "cartera"
+  | "deuda"
+  | "roadmap"
+  | "macro"
+  | "configuracion";
+
+const modules: {
+  id: AppSection;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    description: "Resumen operativo",
+  },
+  {
+    id: "notas",
+    label: "Notas",
+    description: "Captura y revision",
+  },
+  {
+    id: "decisiones",
+    label: "Decisiones",
+    description: "Filtro anti-error",
+  },
+  {
+    id: "cartera",
+    label: "Cartera",
+    description: "Asignacion objetivo",
+  },
+  {
+    id: "deuda",
+    label: "Deuda",
+    description: "Carga confirmada",
+  },
+  {
+    id: "roadmap",
+    label: "Roadmap",
+    description: "Hitos patrimoniales",
+  },
+  {
+    id: "macro",
+    label: "Macro",
+    description: "Contexto externo",
+  },
+  {
+    id: "configuracion",
+    label: "Config",
+    description: "Supuestos base",
+  },
 ];
 
 type TransactionSummary = ReturnType<typeof confirmedTransactionsSummary>;
 
+const inputShellClass =
+  "libertad-field flex h-12 items-center rounded-md bg-white px-3";
+
+const inputClass =
+  "h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-stone-950 outline-none libertad-number";
+
+function nextBotOperaMonth(month?: string) {
+  if (!month) {
+    return new Date().toISOString().slice(0, 7);
+  }
+
+  const [year, monthNumber] = month.split("-").map(Number);
+
+  if (!Number.isFinite(year) || !Number.isFinite(monthNumber)) {
+    return new Date().toISOString().slice(0, 7);
+  }
+
+  const nextMonth = new Date(Date.UTC(year, monthNumber, 1));
+
+  return nextMonth.toISOString().slice(0, 7);
+}
+
 export function LibertadDashboard() {
   const [inputs, setInputs] = useState<FreedomInputs>(DEFAULT_INPUTS);
+  const [portfolioSettings, setPortfolioSettings] =
+    useState<TargetPortfolioSettings>(DEFAULT_TARGET_PORTFOLIO_SETTINGS);
+  const [botOperaInvestment, setBotOperaInvestment] =
+    useState<BotOpera24hsInvestment>(DEFAULT_BOT_OPERA24HS_INVESTMENT);
+  const [roadmapSimulatedContribution, setRoadmapSimulatedContribution] =
+    useState(DEFAULT_INPUTS.monthlyContribution + 500);
   const [confirmedTransactions, setConfirmedTransactions] = useState<
     ConfirmedFinancialTransaction[]
   >([]);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [showOnboardingCards, setShowOnboardingCards] = useState(false);
+  const [activeSection, setActiveSection] =
+    useState<AppSection>("dashboard");
 
   const handleTransactionsChange = useCallback(
     (transactions: ConfirmedFinancialTransaction[]) => {
@@ -108,9 +206,72 @@ export function LibertadDashboard() {
       if (stored) {
         setInputs({ ...DEFAULT_INPUTS, ...JSON.parse(stored) });
       }
+
+      const storedPortfolio = window.localStorage.getItem(PORTFOLIO_STORAGE_KEY);
+
+      if (storedPortfolio) {
+        setPortfolioSettings(
+          normalizeTargetPortfolioSettings(JSON.parse(storedPortfolio)),
+        );
+      }
+
+      const storedBotOpera = window.localStorage.getItem(
+        BOT_OPERA24HS_STORAGE_KEY,
+      );
+
+      if (storedBotOpera) {
+        setBotOperaInvestment(
+          normalizeBotOpera24hsInvestment(JSON.parse(storedBotOpera)),
+        );
+      }
+
+      const storedRoadmap = window.localStorage.getItem(ROADMAP_STORAGE_KEY);
+
+      if (storedRoadmap) {
+        const parsedRoadmap = JSON.parse(storedRoadmap) as {
+          simulatedMonthlyContribution?: number;
+        };
+
+        if (Number.isFinite(parsedRoadmap.simulatedMonthlyContribution)) {
+          setRoadmapSimulatedContribution(
+            Math.max(0, parsedRoadmap.simulatedMonthlyContribution ?? 0),
+          );
+        }
+      }
+
+      const hasSeenOnboarding = window.localStorage.getItem(
+        ONBOARDING_STORAGE_KEY,
+      );
+
+      if (!hasSeenOnboarding) {
+        setShowOnboardingCards(true);
+        window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
+      }
     } finally {
       setHasLoaded(true);
     }
+  }, []);
+
+  useEffect(() => {
+    function syncSectionFromHash() {
+      const hashSection = window.location.hash.slice(1);
+      const matchingSection = modules.find(
+        (module) => module.id === hashSection,
+      );
+
+      if (matchingSection) {
+        setActiveSection(matchingSection.id);
+      }
+    }
+
+    window.addEventListener("hashchange", syncSectionFromHash);
+    window.addEventListener("popstate", syncSectionFromHash);
+    queueMicrotask(syncSectionFromHash);
+
+    return () => {
+      window.removeEventListener("hashchange", syncSectionFromHash);
+      window.removeEventListener("popstate", syncSectionFromHash);
+    };
   }, []);
 
   useEffect(() => {
@@ -119,9 +280,58 @@ export function LibertadDashboard() {
     }
   }, [hasLoaded, inputs]);
 
+  useEffect(() => {
+    if (hasLoaded) {
+      window.localStorage.setItem(
+        PORTFOLIO_STORAGE_KEY,
+        JSON.stringify(portfolioSettings),
+      );
+    }
+  }, [hasLoaded, portfolioSettings]);
+
+  useEffect(() => {
+    if (hasLoaded) {
+      window.localStorage.setItem(
+        BOT_OPERA24HS_STORAGE_KEY,
+        JSON.stringify(botOperaInvestment),
+      );
+    }
+  }, [botOperaInvestment, hasLoaded]);
+
+  useEffect(() => {
+    if (hasLoaded) {
+      window.localStorage.setItem(
+        ROADMAP_STORAGE_KEY,
+        JSON.stringify({
+          simulatedMonthlyContribution: roadmapSimulatedContribution,
+        }),
+      );
+    }
+  }, [hasLoaded, roadmapSimulatedContribution]);
+
   const transactionSummary = useMemo(
     () => confirmedTransactionsSummary(confirmedTransactions),
     [confirmedTransactions],
+  );
+  const lifestyleInflation = useMemo(
+    () => analyzeLifestyleInflation(confirmedTransactions),
+    [confirmedTransactions],
+  );
+  const confirmedDebtLoad = useMemo(
+    () =>
+      analyzeConfirmedDebtLoad(
+        confirmedTransactions,
+        inputs.monthlyContribution,
+      ),
+    [confirmedTransactions, inputs.monthlyContribution],
+  );
+  const targetPortfolio = useMemo(
+    () => analyzeTargetPortfolio(portfolioSettings, confirmedTransactions),
+    [portfolioSettings, confirmedTransactions],
+  );
+  const botOperaAnalysis = useMemo(
+    () => analyzeBotOpera24hs(botOperaInvestment),
+    [botOperaInvestment],
   );
 
   const effectiveInputs = useMemo(
@@ -160,6 +370,24 @@ export function LibertadDashboard() {
     };
   }, [effectiveInputs]);
 
+  const wealthRoadmap = useMemo(
+    () =>
+      analyzeWealthRoadmap({
+        netWorth: effectiveInputs.netWorth,
+        investedCapital: effectiveInputs.investedCapital,
+        monthlyContribution: inputs.monthlyContribution,
+        annualReturnPercent: inputs.expectedAnnualReturn,
+        simulatedMonthlyContribution: roadmapSimulatedContribution,
+      }),
+    [
+      effectiveInputs.investedCapital,
+      effectiveInputs.netWorth,
+      inputs.expectedAnnualReturn,
+      inputs.monthlyContribution,
+      roadmapSimulatedContribution,
+    ],
+  );
+
   const yearsLabel = Number.isFinite(metrics.years)
     ? `${numberFormatter.format(metrics.years)} anos`
     : "Sin fecha estimada";
@@ -173,236 +401,1768 @@ export function LibertadDashboard() {
     }));
   }
 
+  function updatePortfolioTarget(assetClass: PortfolioAssetClass, value: string) {
+    const parsedValue = Number(value);
+
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        targets: {
+          ...current.targets,
+          [assetClass]: Number.isFinite(parsedValue) ? parsedValue : 0,
+        },
+      }),
+    );
+  }
+
+  function updatePortfolioManualAmount(
+    assetClass: PortfolioAssetClass,
+    value: string,
+  ) {
+    const parsedValue = Number(value);
+
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        manualAmounts: {
+          ...current.manualAmounts,
+          [assetClass]: Number.isFinite(parsedValue) ? parsedValue : 0,
+        },
+      }),
+    );
+  }
+
+  function updateInvestmentPolicy(
+    key: keyof InvestmentPolicySettings,
+    value: string,
+  ) {
+    const numericFields: (keyof InvestmentPolicySettings)[] = [
+      "monthlyContributionTarget",
+      "salaryInvestmentPercent",
+      "emergencyFundMonths",
+      "rebalanceTolerancePercent",
+    ];
+    const nextValue = numericFields.includes(key)
+      ? Number.isFinite(Number(value))
+        ? Number(value)
+        : 0
+      : value;
+
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        policy: {
+          ...current.policy,
+          [key]: nextValue,
+        },
+      }),
+    );
+  }
+
+  function updateBotOperaField(
+    key: keyof Omit<BotOpera24hsInvestment, "name" | "monthlyResults">,
+    value: string,
+  ) {
+    const numericFields: (keyof BotOpera24hsInvestment)[] = [
+      "initialCapital",
+      "monthlyContribution",
+      "reinvestmentMinimum",
+    ];
+    const nextValue = numericFields.includes(key)
+      ? Number.isFinite(Number(value))
+        ? Number(value)
+        : 0
+      : value;
+
+    setBotOperaInvestment((current) =>
+      normalizeBotOpera24hsInvestment({
+        ...current,
+        [key]: nextValue,
+      }),
+    );
+  }
+
+  function updateBotOperaMonthlyResult(
+    index: number,
+    key: "month" | "amount",
+    value: string,
+  ) {
+    setBotOperaInvestment((current) =>
+      normalizeBotOpera24hsInvestment({
+        ...current,
+        monthlyResults: current.monthlyResults.map((result, resultIndex) =>
+          resultIndex === index
+            ? {
+                ...result,
+                [key]:
+                  key === "amount"
+                    ? Number.isFinite(Number(value))
+                      ? Number(value)
+                      : 0
+                    : value,
+              }
+            : result,
+        ),
+      }),
+    );
+  }
+
+  function addBotOperaMonth() {
+    setBotOperaInvestment((current) =>
+      normalizeBotOpera24hsInvestment({
+        ...current,
+        monthlyResults: [
+          ...current.monthlyResults,
+          {
+            month: nextBotOperaMonth(
+              current.monthlyResults[current.monthlyResults.length - 1]?.month,
+            ),
+            amount: 0,
+          },
+        ],
+      }),
+    );
+  }
+
+  function removeBotOperaMonth(month: string) {
+    setBotOperaInvestment((current) =>
+      normalizeBotOpera24hsInvestment({
+        ...current,
+        monthlyResults: current.monthlyResults.filter(
+          (result) => result.month !== month,
+        ),
+      }),
+    );
+  }
+
+  function updateRoadmapSimulatedContribution(value: string) {
+    const parsedValue = Number(value);
+
+    setRoadmapSimulatedContribution(
+      Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
+    );
+  }
+
+  function selectSection(section: AppSection) {
+    setActiveSection(section);
+    window.history.pushState(null, "", `#${section}`);
+  }
+
+  const activeModule =
+    modules.find((module) => module.id === activeSection) ?? modules[0];
+  const needsDebtAttention = confirmedDebtLoad.highRiskCount > 0;
+  const needsPortfolioAttention = Boolean(targetPortfolio.targetWarning);
+  const needsLifestyleAttention = lifestyleInflation.risk === "alto";
+  const primaryAttention = needsDebtAttention
+    ? "Revisar deuda confirmada"
+    : needsLifestyleAttention
+      ? "Revisar inflacion de estilo de vida"
+      : needsPortfolioAttention
+        ? "Ajustar objetivos de cartera"
+        : confirmedTransactions.length === 0
+          ? "Capturar y confirmar el primer movimiento"
+          : "Mantener captura semanal";
+  const weeklyAction = needsDebtAttention
+    ? "Abrir deuda y revisar la presion mensual."
+    : needsLifestyleAttention
+      ? "Abrir dashboard y aplicar una regla concreta al aumento."
+      : needsPortfolioAttention
+        ? "Abrir cartera y corregir objetivos hasta 100%."
+        : "Capturar una nota real y confirmar solo lo revisado.";
+
   return (
     <main
       id="dashboard"
-      className="min-h-screen bg-[#f6f5f1] text-stone-950"
+      className="min-h-screen bg-[var(--background)] text-stone-950"
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-6 sm:px-8 lg:px-10">
-        <header className="rounded-lg border border-stone-200 bg-white px-5 py-5 shadow-sm sm:px-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-8 sm:py-7 lg:px-10">
+        <header className="rounded-lg border border-stone-900 bg-stone-950 px-5 py-5 text-white shadow-sm sm:px-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-emerald-700">
+              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-emerald-300">
                 Libertad OS
               </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-stone-950 sm:text-4xl">
+              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white text-balance sm:text-4xl">
                 Sistema personal de libertad financiera
               </h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-stone-600">
+              <p className="mt-3 max-w-2xl text-base leading-7 text-stone-300">
                 Un panel sobrio para medir tu numero x25, capturar decisiones y
                 convertir notas financieras en datos confirmados.
               </p>
+              {showOnboardingCards ? (
+                <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
+                  <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
+                    <p className="font-semibold text-white">Manual primero</p>
+                    <p className="mt-1 text-xs leading-5 text-stone-300">
+                      Las notas solo impactan al confirmar.
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
+                    <p className="font-semibold text-white">x25 visible</p>
+                    <p className="mt-1 text-xs leading-5 text-stone-300">
+                      Cada decision muestra consecuencia.
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
+                    <p className="font-semibold text-white">Sin automatismos</p>
+                    <p className="mt-1 text-xs leading-5 text-stone-300">
+                      Sugerir, revisar, confirmar.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <nav className="flex flex-wrap gap-2" aria-label="Modulos">
+            <nav
+              className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl lg:grid-cols-4"
+              aria-label="Secciones"
+            >
               {modules.map((module) => (
-                <a
+                <button
                   key={module.label}
-                  className={`rounded-md border px-3 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
-                    module.active
-                      ? "border-emerald-700 bg-emerald-700 text-white"
-                      : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
+                  aria-pressed={activeSection === module.id}
+                  className={`min-h-14 rounded-md border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 ${
+                    activeSection === module.id
+                      ? "border-white bg-white text-stone-950"
+                      : "border-white/15 bg-white/[0.06] text-stone-200 hover:border-white/30 hover:bg-white/10"
                   }`}
-                  href={module.href}
+                  type="button"
+                  onClick={() => selectSection(module.id)}
                 >
-                  {module.label}
-                </a>
+                  <span className="block text-sm font-semibold">
+                    {module.label}
+                  </span>
+                  <span className="mt-0.5 block text-xs opacity-75">
+                    {module.description}
+                  </span>
+                </button>
               ))}
             </nav>
           </div>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-[1.35fr_0.85fr]">
-          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-stone-600">
-                  Numero de libertad financiera
-                </p>
-                <p className="mt-2 text-4xl font-semibold text-stone-950 sm:text-5xl">
-                  {currencyFormatter.format(metrics.target)}
-                </p>
+        <div
+          id={`${activeSection}-view`}
+          className="grid gap-5 scroll-mt-6"
+          aria-live="polite"
+        >
+          {activeSection === "notas" ? null : (
+            <section className="libertad-soft-panel rounded-lg p-4 sm:p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">
+                    {activeModule.label}
+                  </p>
+                  <h2 className="mt-1 text-2xl font-semibold text-stone-950 text-balance">
+                    {activeModule.description}
+                  </h2>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
+                  <MetricCard label="Atencion" value={primaryAttention} />
+                  <MetricCard label="Accion semanal" value={weeklyAction} />
+                </div>
               </div>
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-left">
-                <p className="text-sm font-medium text-amber-950">
-                  Falta para la meta
-                </p>
-                <p className="mt-1 text-2xl font-semibold text-amber-950">
-                  {currencyFormatter.format(metrics.remaining)}
-                </p>
-              </div>
-            </div>
+            </section>
+          )}
 
-            <div className="mt-7">
-              <div className="flex items-center justify-between gap-4 text-sm font-medium">
-                <span className="text-stone-600">Progreso total</span>
-                <span className="text-stone-950">
-                  {percentFormatter.format(metrics.completed)}%
-                </span>
+          {activeSection === "dashboard" ? (
+            <>
+              <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="libertad-surface rounded-lg p-5 sm:p-6">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-emerald-800">
+                        Numero de libertad financiera
+                      </p>
+                      <p className="libertad-number mt-2 break-words text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
+                        {currencyFormatter.format(metrics.target)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 rounded-md border border-stone-200 bg-stone-950 px-4 py-3 text-left text-white">
+                      <p className="text-sm font-medium text-stone-300">
+                        Falta para la meta
+                      </p>
+                      <p className="libertad-number mt-1 text-2xl font-semibold text-white">
+                        {currencyFormatter.format(metrics.remaining)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 rounded-lg border border-stone-200 bg-[#f8f7f3] p-4">
+                    <div className="flex items-center justify-between gap-4 text-sm font-medium">
+                      <span className="text-stone-600">Progreso total</span>
+                      <span className="libertad-number text-lg font-semibold text-stone-950">
+                        {percentFormatter.format(metrics.completed)}%
+                      </span>
+                    </div>
+                    <div
+                      aria-label={`Progreso total ${percentFormatter.format(
+                        metrics.completed,
+                      )}%`}
+                      aria-valuemax={100}
+                      aria-valuemin={0}
+                      aria-valuenow={Math.min(
+                        100,
+                        Math.max(0, metrics.completed),
+                      )}
+                      className="libertad-meter mt-4 h-5"
+                      role="progressbar"
+                    >
+                      <div
+                        className="h-full rounded-full bg-emerald-700"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(0, metrics.completed),
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-3 flex justify-between text-xs font-medium text-stone-500">
+                      <span>Hoy</span>
+                      <span>50%</span>
+                      <span>Libertad</span>
+                    </div>
+                  </div>
+
+                  <div className="libertad-card-grid mt-7 grid gap-3">
+                    <MetricCard
+                      label="Gasto anual"
+                      value={currencyFormatter.format(metrics.annual)}
+                    />
+                    <MetricCard
+                      label="Tiempo estimado"
+                      value={yearsLabel}
+                      tone="blue"
+                    />
+                    <MetricCard
+                      label="Patrimonio invertido"
+                      value={`${percentFormatter.format(metrics.investRatio)}%`}
+                      tone="green"
+                    />
+                  </div>
+                </div>
+
+                <aside className="rounded-lg border border-emerald-950 bg-[#11231d] p-5 text-white shadow-sm sm:p-6">
+                  <p className="text-sm font-medium text-stone-300">
+                    Lectura del mes
+                  </p>
+                  <p className="mt-4 text-3xl font-semibold text-balance">
+                    {metrics.completed >= 100
+                      ? "Meta alcanzada"
+                      : metrics.completed >= 50
+                        ? "La bola de nieve ya pesa"
+                        : "La maquina esta tomando forma"}
+                  </p>
+                  <p className="mt-4 text-sm leading-6 text-stone-300">
+                    Con un aporte de{" "}
+                    {currencyFormatter.format(inputs.monthlyContribution)} y un
+                    retorno anual esperado de{" "}
+                    {percentFormatter.format(inputs.expectedAnnualReturn)}%, el
+                    tablero estima {yearsLabel.toLowerCase()} para llegar al
+                    numero x25.
+                  </p>
+                  <div className="mt-5 grid gap-2">
+                    <SignalRow
+                      label="Movimientos confirmados"
+                      value={confirmedTransactions.length.toString()}
+                    />
+                    <SignalRow
+                      label="Impacto de notas"
+                      value={currencyFormatter.format(
+                        transactionSummary.netWorthDelta,
+                      )}
+                    />
+                    <SignalRow
+                      label="Gasto recurrente detectado"
+                      value={currencyFormatter.format(
+                        transactionSummary.recurringMonthlyExpenses,
+                      )}
+                    />
+                  </div>
+                </aside>
+              </section>
+
+              <section className="libertad-surface rounded-lg p-5 sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-stone-950">
+                      Pulso financiero
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-stone-600">
+                      Lectura combinada de tus datos base y lo que ya
+                      confirmaste.
+                    </p>
+                  </div>
+                  <button
+                    className="inline-flex h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                    type="button"
+                    onClick={() => selectSection("notas")}
+                  >
+                    Capturar nota
+                  </button>
+                </div>
+
+                <div className="libertad-card-grid mt-5 grid gap-3">
+                  <MetricCard
+                    label="Patrimonio actual"
+                    value={currencyFormatter.format(effectiveInputs.netWorth)}
+                    tone="green"
+                  />
+                  <MetricCard
+                    label="Capital invertido"
+                    value={currencyFormatter.format(
+                      effectiveInputs.investedCapital,
+                    )}
+                    tone="blue"
+                  />
+                  <MetricCard
+                    label="Gasto mensual deseado"
+                    value={currencyFormatter.format(
+                      effectiveInputs.desiredMonthlySpend,
+                    )}
+                  />
+                  <MetricCard
+                    label="Aporte mensual"
+                    value={currencyFormatter.format(inputs.monthlyContribution)}
+                    tone="amber"
+                  />
+                </div>
+
+                <div className="libertad-soft-panel mt-6 rounded-md p-4">
+                  <p className="text-sm font-semibold text-stone-800">
+                    Regla x25 activa
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-stone-700">
+                    Cada {currencyFormatter.format(100)} menos de gasto mensual
+                    baja tu numero de libertad en{" "}
+                    {currencyFormatter.format(30000)}.
+                  </p>
+                </div>
+              </section>
+
+              <FireLeversPanel summary={transactionSummary} />
+
+              <LifestyleInflationPanel analysis={lifestyleInflation} />
+            </>
+          ) : null}
+
+          {activeSection === "notas" ? (
+            <FinancialNotesModule
+              onTransactionsChange={handleTransactionsChange}
+            />
+          ) : null}
+
+          {activeSection === "cartera" ? (
+            <TargetPortfolioPanel
+              analysis={targetPortfolio}
+              botAnalysis={botOperaAnalysis}
+              botInvestment={botOperaInvestment}
+              manualAmounts={portfolioSettings.manualAmounts}
+              policy={targetPortfolio.policy}
+              onBotFieldChange={updateBotOperaField}
+              onBotMonthlyResultChange={updateBotOperaMonthlyResult}
+              onBotMonthAdd={addBotOperaMonth}
+              onBotMonthRemove={removeBotOperaMonth}
+              onManualAmountChange={updatePortfolioManualAmount}
+              onPolicyChange={updateInvestmentPolicy}
+              onTargetChange={updatePortfolioTarget}
+            />
+          ) : null}
+
+          {activeSection === "deuda" ? (
+            <DebtLoadPanel analysis={confirmedDebtLoad} />
+          ) : null}
+
+          {activeSection === "configuracion" ? (
+            <section className="libertad-surface rounded-lg p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-stone-950">
+                    Datos base
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-stone-600">
+                    Estos valores son tu escenario base. Las notas confirmadas
+                    se suman encima sin pisar tus supuestos.
+                  </p>
+                </div>
               </div>
-              <div className="mt-3 h-3 overflow-hidden rounded-full bg-stone-200">
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {fields.map((field) => (
+                  <label key={field.id} className="grid gap-2">
+                    <span className="text-sm font-medium text-stone-700">
+                      {field.label}
+                    </span>
+                    <div className={inputShellClass}>
+                      {field.prefix ? (
+                        <span className="mr-2 text-sm font-semibold text-stone-500">
+                          {field.prefix}
+                        </span>
+                      ) : null}
+                      <input
+                        autoComplete="off"
+                        className={inputClass}
+                        inputMode="decimal"
+                        min="0"
+                        name={field.id}
+                        step={field.step}
+                        type="number"
+                        value={inputs[field.id]}
+                        onChange={(event) =>
+                          updateInput(field.id, event.target.value)
+                        }
+                      />
+                      {field.suffix ? (
+                        <span className="ml-2 text-sm font-semibold text-stone-500">
+                          {field.suffix}
+                        </span>
+                      ) : null}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {activeSection === "decisiones" ? (
+            <SectionPlaceholder
+              title="Modo decision sera el siguiente bloque de producto."
+              body="Por ahora, las compras futuras siguen entrando como notas revisables. Nada se guarda como gasto real sin confirmacion."
+              action="Usar Notas para capturar una decision"
+              onAction={() => selectSection("notas")}
+            />
+          ) : null}
+
+          {activeSection === "roadmap" ? (
+            <WealthRoadmapPanel
+              analysis={wealthRoadmap}
+              confirmedExpenseImpact={transactionSummary.confirmedExpenses}
+              monthlyContribution={inputs.monthlyContribution}
+              simulatedContribution={roadmapSimulatedContribution}
+              onSimulatedContributionChange={updateRoadmapSimulatedContribution}
+            />
+          ) : null}
+
+          {activeSection === "macro" ? (
+            <SectionPlaceholder
+              title="Macro queda aislado del tablero operativo."
+              body="El contexto externo podra informar decisiones, pero no debe dominar la conducta ni entrar como dato confirmado."
+              action="Revisar pulso financiero"
+              onAction={() => selectSection("dashboard")}
+            />
+          ) : null}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function WealthRoadmapPanel({
+  analysis,
+  confirmedExpenseImpact,
+  monthlyContribution,
+  simulatedContribution,
+  onSimulatedContributionChange,
+}: {
+  analysis: WealthRoadmapAnalysis;
+  confirmedExpenseImpact: number;
+  monthlyContribution: number;
+  simulatedContribution: number;
+  onSimulatedContributionChange: (value: string) => void;
+}) {
+  const nextMilestone = analysis.nextMilestone;
+  const expenseDelayMonths =
+    monthlyContribution > 0 ? confirmedExpenseImpact / monthlyContribution : 0;
+
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-stone-950">
+            Roadmap patrimonial
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+            Hitos patrimoniales calculados con datos confirmados. La simulacion
+            queda separada de la realidad.
+          </p>
+        </div>
+        <label className="grid gap-2 sm:min-w-[260px]">
+          <span className="text-sm font-semibold text-stone-700">
+            Simular aporte mensual
+          </span>
+          <div className={inputShellClass}>
+            <span className="mr-2 text-sm font-semibold text-stone-500">
+              USD
+            </span>
+            <input
+              autoComplete="off"
+              className={inputClass}
+              inputMode="decimal"
+              min="0"
+              name="roadmap-simulated-contribution"
+              step="100"
+              type="number"
+              value={simulatedContribution}
+              onChange={(event) =>
+                onSimulatedContributionChange(event.target.value)
+              }
+            />
+          </div>
+        </label>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+        <div className="rounded-lg border border-stone-900 bg-stone-950 p-5 text-white">
+          <p className="text-sm font-semibold text-emerald-300">
+            Proximo hito
+          </p>
+          {nextMilestone ? (
+            <>
+              <h3 className="mt-3 text-3xl font-semibold text-balance">
+                {nextMilestone.milestone.label}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-stone-300">
+                Te faltan{" "}
+                {currencyFormatter.format(nextMilestone.distanceAmount)} para
+                llegar a este hito.
+              </p>
+              <div
+                aria-label={`${nextMilestone.milestone.label}: ${percentFormatter.format(
+                  nextMilestone.progressPercent,
+                )}% completado`}
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={Math.min(
+                  100,
+                  Math.max(0, nextMilestone.progressPercent),
+                )}
+                className="libertad-meter mt-5 h-4 bg-white/15"
+                role="progressbar"
+              >
                 <div
-                  className="h-full rounded-full bg-emerald-700"
-                  style={{ width: `${metrics.completed}%` }}
+                  className="h-full rounded-full bg-emerald-400"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.max(0, nextMilestone.progressPercent),
+                    )}%`,
+                  }}
+                />
+              </div>
+              <div className="mt-5 grid gap-2">
+                <SignalRow
+                  label="Aporte actual"
+                  value={formatMonths(nextMilestone.estimatedMonths)}
+                />
+                <SignalRow
+                  label="Aporte simulado"
+                  value={formatMonths(nextMilestone.simulatedEstimatedMonths)}
+                />
+                <SignalRow
+                  label="Progreso"
+                  value={`${percentFormatter.format(
+                    nextMilestone.progressPercent,
+                  )}%`}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-stone-300">
+              Todos los hitos base aparecen alcanzados con los supuestos
+              actuales.
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-3">
+          <MetricCard
+            label="Gastos confirmados"
+            value={currencyFormatter.format(confirmedExpenseImpact)}
+            tone={confirmedExpenseImpact > 0 ? "amber" : "neutral"}
+          />
+          <MetricCard
+            label="Impacto sobre hito"
+            value={
+              expenseDelayMonths > 0
+                ? `${numberFormatter.format(expenseDelayMonths)} meses`
+                : "Sin retraso detectado"
+            }
+            tone={expenseDelayMonths > 0 ? "amber" : "green"}
+          />
+          <div className="libertad-soft-panel rounded-md p-4">
+            <p className="text-sm font-semibold text-stone-800">
+              Regla de lectura
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-700">
+              El progreso real usa patrimonio e inversion confirmados. La
+              simulacion solo cambia el aporte mensual supuesto.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3">
+        {analysis.milestones.map((milestone) => (
+          <MilestoneRow key={milestone.milestone.id} milestone={milestone} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MilestoneRow({ milestone }: { milestone: MilestoneProgress }) {
+  const statusClasses = milestone.isReached
+    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+    : milestone.isNext
+      ? "border-stone-900 bg-stone-950 text-white"
+      : "border-stone-200 bg-white text-stone-800";
+
+  return (
+    <div className={`rounded-md border p-4 ${statusClasses}`}>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_130px_150px_150px] lg:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold">{milestone.milestone.label}</p>
+            {milestone.isNext ? (
+              <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-white">
+                Prioritario
+              </span>
+            ) : null}
+            {milestone.isReached ? (
+              <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-xs font-semibold text-emerald-950">
+                Alcanzado
+              </span>
+            ) : null}
+          </div>
+          <p
+            className={`mt-1 text-xs leading-5 ${
+              milestone.isNext ? "text-stone-300" : "text-stone-500"
+            }`}
+          >
+            Base: {roadmapBasisLabel(milestone.milestone.basis)}
+          </p>
+          <div
+            aria-label={`${milestone.milestone.label}: ${percentFormatter.format(
+              milestone.progressPercent,
+            )}% completado`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={Math.min(100, Math.max(0, milestone.progressPercent))}
+            className={`libertad-meter mt-3 h-3 ${
+              milestone.isNext ? "bg-white/15" : ""
+            }`}
+            role="progressbar"
+          >
+            <div
+              className={`h-full rounded-full ${
+                milestone.isNext ? "bg-emerald-400" : "bg-emerald-700"
+              }`}
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.max(0, milestone.progressPercent),
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        <RoadmapValue label="Actual" value={currencyFormatter.format(milestone.currentAmount)} />
+        <RoadmapValue label="Faltan" value={currencyFormatter.format(milestone.distanceAmount)} />
+        <RoadmapValue label="Fecha estimada" value={formatMonths(milestone.estimatedMonths)} />
+      </div>
+    </div>
+  );
+}
+
+function RoadmapValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold opacity-70">{label}</p>
+      <p className="libertad-number mt-1 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function roadmapBasisLabel(basis: MilestoneProgress["milestone"]["basis"]) {
+  return basis === "invested_capital" ? "capital invertido" : "patrimonio neto";
+}
+
+function formatMonths(months?: number) {
+  if (months === undefined || !Number.isFinite(months)) {
+    return "Sin fecha";
+  }
+
+  if (months <= 0) {
+    return "Alcanzado";
+  }
+
+  if (months < 1) {
+    return "Menos de 1 mes";
+  }
+
+  return `${numberFormatter.format(months)} meses`;
+}
+
+function SectionPlaceholder({
+  title,
+  body,
+  action,
+  onAction,
+}: {
+  title: string;
+  body: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <section className="libertad-surface rounded-lg p-6 sm:p-8">
+      <div className="max-w-2xl">
+        <h2 className="text-2xl font-semibold text-stone-950 text-balance">
+          {title}
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-stone-600">{body}</p>
+        <button
+          className="mt-5 inline-flex h-11 items-center justify-center rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition-colors hover:bg-stone-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+          type="button"
+          onClick={onAction}
+        >
+          {action}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function TargetPortfolioPanel({
+  analysis,
+  botAnalysis,
+  botInvestment,
+  manualAmounts,
+  policy,
+  onBotFieldChange,
+  onBotMonthlyResultChange,
+  onBotMonthAdd,
+  onBotMonthRemove,
+  onManualAmountChange,
+  onPolicyChange,
+  onTargetChange,
+}: {
+  analysis: ReturnType<typeof analyzeTargetPortfolio>;
+  botAnalysis: ReturnType<typeof analyzeBotOpera24hs>;
+  botInvestment: BotOpera24hsInvestment;
+  manualAmounts: TargetPortfolioSettings["manualAmounts"];
+  policy: InvestmentPolicySettings;
+  onBotFieldChange: (
+    key: keyof Omit<BotOpera24hsInvestment, "name" | "monthlyResults">,
+    value: string,
+  ) => void;
+  onBotMonthlyResultChange: (
+    index: number,
+    key: "month" | "amount",
+    value: string,
+  ) => void;
+  onBotMonthAdd: () => void;
+  onBotMonthRemove: (month: string) => void;
+  onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
+  onPolicyChange: (key: keyof InvestmentPolicySettings, value: string) => void;
+  onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
+}) {
+  const largestImbalance = analysis.largestImbalance;
+
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-stone-950">
+            Cartera objetivo
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+            Objetivo vs actual. Lectura descriptiva de asignacion patrimonial;
+            no es recomendacion financiera.
+          </p>
+        </div>
+        <div
+          aria-live="polite"
+          className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-semibold ${
+            analysis.targetWarning
+              ? "border-amber-200 bg-amber-50 text-amber-950"
+              : "border-emerald-200 bg-emerald-50 text-emerald-950"
+          }`}
+        >
+          {analysis.targetWarning
+            ? `${percentFormatter.format(analysis.targetTotalPercent)}% objetivo`
+            : "100% objetivo"}
+        </div>
+      </div>
+
+      {analysis.targetWarning ? (
+        <div
+          aria-live="polite"
+          className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        >
+          Los objetivos no suman 100%. Podes seguir editando sin perder la
+          lectura actual.
+        </div>
+      ) : null}
+
+      <div className="libertad-card-grid mt-5 grid gap-3">
+        <MetricCard
+          label="Total actual"
+          value={currencyFormatter.format(analysis.totalCurrentAmount)}
+          tone="green"
+        />
+        <MetricCard
+          label="Clases alineadas"
+          value={`${analysis.alignedCount}/${analysis.assets.length}`}
+          tone="blue"
+        />
+        <MetricCard
+          label="Principal desbalance"
+          value={
+            largestImbalance
+              ? `${largestImbalance.label} ${percentFormatter.format(
+                  Math.abs(largestImbalance.imbalancePercent),
+                )} pp`
+              : "Sin datos"
+          }
+          tone={largestImbalance ? "amber" : "neutral"}
+        />
+      </div>
+
+      <BotOpera24hsPanel
+        analysis={botAnalysis}
+        investment={botInvestment}
+        onFieldChange={onBotFieldChange}
+        onMonthAdd={onBotMonthAdd}
+        onMonthRemove={onBotMonthRemove}
+        onMonthlyResultChange={onBotMonthlyResultChange}
+      />
+
+      <div className="mt-5 grid gap-3">
+        {analysis.assets.map((asset) => (
+          <PortfolioAssetRow
+            key={asset.assetClass}
+            asset={asset}
+            manualAmount={manualAmounts[asset.assetClass]}
+            onManualAmountChange={onManualAmountChange}
+            onTargetChange={onTargetChange}
+          />
+        ))}
+      </div>
+
+      <InvestmentPolicyPanel policy={policy} onPolicyChange={onPolicyChange} />
+    </section>
+  );
+}
+
+function BotOpera24hsPanel({
+  analysis,
+  investment,
+  onFieldChange,
+  onMonthAdd,
+  onMonthRemove,
+  onMonthlyResultChange,
+}: {
+  analysis: ReturnType<typeof analyzeBotOpera24hs>;
+  investment: BotOpera24hsInvestment;
+  onFieldChange: (
+    key: keyof Omit<BotOpera24hsInvestment, "name" | "monthlyResults">,
+    value: string,
+  ) => void;
+  onMonthAdd: () => void;
+  onMonthRemove: (month: string) => void;
+  onMonthlyResultChange: (
+    index: number,
+    key: "month" | "amount",
+    value: string,
+  ) => void;
+}) {
+  const setupFields: {
+    key: keyof Omit<BotOpera24hsInvestment, "name" | "monthlyResults">;
+    label: string;
+    type: "text" | "date" | "number";
+    prefix?: string;
+    suffix?: string;
+    step?: string;
+  }[] = [
+    { key: "botNumber", label: "Tipo / numero de bot", type: "text" },
+    { key: "startDate", label: "Inicio de funcionamiento", type: "date" },
+    {
+      key: "initialCapital",
+      label: "Capital inicial",
+      type: "number",
+      prefix: "USD",
+      step: "100",
+    },
+    {
+      key: "monthlyContribution",
+      label: "Aporte mensual",
+      type: "number",
+      prefix: "USD",
+      step: "50",
+    },
+    {
+      key: "reinvestmentMinimum",
+      label: "Minimo para reinvertir",
+      type: "number",
+      prefix: "USD",
+      step: "50",
+    },
+  ];
+
+  return (
+    <section className="mt-5 rounded-md border border-stone-200 bg-stone-50 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-stone-950">
+            Bot Opera24hs
+          </h3>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+            Registro separado para medir aportes, capital operativo y ganancias
+            sin mezclar datos de notas no confirmadas.
+          </p>
+        </div>
+        <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700">
+          Aportes pendientes hasta reinvertir
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {setupFields.map((field) => (
+          <label key={field.key} className="grid gap-2">
+            <span className="text-xs font-semibold text-stone-600">
+              {field.label}
+            </span>
+            <div className={inputShellClass}>
+              {field.prefix ? (
+                <span className="mr-2 text-sm font-semibold text-stone-500">
+                  {field.prefix}
+                </span>
+              ) : null}
+              <input
+                autoComplete="off"
+                className={
+                  field.type === "number" ? inputClass : `${inputClass} text-sm`
+                }
+                inputMode={field.type === "number" ? "decimal" : undefined}
+                min={field.type === "number" ? "0" : undefined}
+                name={`bot-opera-${field.key}`}
+                step={field.step}
+                type={field.type}
+                value={investment[field.key] as string | number}
+                onChange={(event) =>
+                  onFieldChange(field.key, event.target.value)
+                }
+              />
+              {field.suffix ? (
+                <span className="ml-2 text-sm font-semibold text-stone-500">
+                  {field.suffix}
+                </span>
+              ) : null}
+            </div>
+          </label>
+        ))}
+      </div>
+
+      <label className="mt-4 grid gap-2">
+        <span className="text-xs font-semibold text-stone-600">
+          Regla de reinversion
+        </span>
+        <textarea
+          autoComplete="off"
+          className="libertad-field min-h-20 resize-y rounded-md bg-white px-3 py-2 text-sm leading-6 text-stone-900"
+          name="bot-opera-reinvestment-rule"
+          value={investment.reinvestmentRule}
+          onChange={(event) =>
+            onFieldChange("reinvestmentRule", event.target.value)
+          }
+        />
+      </label>
+
+      <div className="libertad-card-grid mt-4 grid gap-3">
+        <MetricCard
+          label="Capital total aportado"
+          value={currencyFormatter.format(analysis.capitalTotalContributed)}
+          tone="blue"
+        />
+        <MetricCard
+          label="Capital operativo actual"
+          value={currencyFormatter.format(analysis.currentOperationalCapital)}
+          tone="green"
+        />
+        <MetricCard
+          label="Capital pendiente"
+          value={currencyFormatter.format(analysis.pendingCapital)}
+          tone="amber"
+        />
+        <MetricCard
+          label="Falta para reinvertir"
+          value={currencyFormatter.format(analysis.amountUntilNextReinvestment)}
+        />
+        <MetricCard
+          label="Resultado del mes"
+          value={currencyFormatter.format(analysis.currentMonthResult)}
+          tone={analysis.currentMonthResult >= 0 ? "green" : "red"}
+        />
+        <MetricCard
+          label="Rentabilidad mensual"
+          value={`${percentFormatter.format(analysis.monthlyReturnPercent)}%`}
+        />
+        <MetricCard
+          label="Rentabilidad acumulada"
+          value={`${percentFormatter.format(
+            analysis.accumulatedReturnPercent,
+          )}%`}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]">
+        <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
+          <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-stone-900">
+                Historial mensual
+              </p>
+              <p className="text-xs leading-5 text-stone-500">
+                Cada fila suma el aporte al pendiente antes de evaluar la
+                reinversion.
+              </p>
+            </div>
+            <button
+              className="min-h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+              type="button"
+              onClick={onMonthAdd}
+            >
+              Agregar mes
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[780px] text-left text-sm">
+              <thead className="bg-stone-50 text-xs font-semibold text-stone-600">
+                <tr>
+                  <th className="px-3 py-2">Mes</th>
+                  <th className="px-3 py-2">Dejo</th>
+                  <th className="px-3 py-2">Operativo</th>
+                  <th className="px-3 py-2">Pendiente aporte</th>
+                  <th className="px-3 py-2">Pendiente ganancia</th>
+                  <th className="px-3 py-2">Reinvertido</th>
+                  <th className="px-3 py-2">Rent.</th>
+                  <th className="px-3 py-2">
+                    <span className="sr-only">Acciones</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {analysis.history.map((month, index) => (
+                  <tr key={`${month.month}-${index}`}>
+                    <td className="px-3 py-2">
+                      <input
+                        aria-label={`Mes ${index + 1}`}
+                        className="libertad-field h-10 w-32 rounded-md px-2 text-sm font-semibold text-stone-950"
+                        type="month"
+                        value={investment.monthlyResults[index]?.month ?? month.month}
+                        onChange={(event) =>
+                          onMonthlyResultChange(index, "month", event.target.value)
+                        }
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        aria-label={`Resultado ${month.month}`}
+                        className="libertad-field h-10 w-28 rounded-md px-2 text-sm font-semibold text-stone-950 libertad-number"
+                        inputMode="decimal"
+                        step="10"
+                        type="number"
+                        value={investment.monthlyResults[index]?.amount ?? 0}
+                        onChange={(event) =>
+                          onMonthlyResultChange(
+                            index,
+                            "amount",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="libertad-number px-3 py-2 font-semibold text-stone-900">
+                      {currencyFormatter.format(month.operationalCapitalEnd)}
+                    </td>
+                    <td className="libertad-number px-3 py-2 text-stone-700">
+                      {currencyFormatter.format(month.pendingContributionCapital)}
+                    </td>
+                    <td className="libertad-number px-3 py-2 text-stone-700">
+                      {currencyFormatter.format(month.pendingProfitCapital)}
+                    </td>
+                    <td className="libertad-number px-3 py-2 text-stone-700">
+                      {currencyFormatter.format(month.reinvestedAmount)}
+                    </td>
+                    <td className="libertad-number px-3 py-2 text-stone-700">
+                      {percentFormatter.format(month.monthlyReturnPercent)}%
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        className="min-h-10 rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                        type="button"
+                        onClick={() => onMonthRemove(month.month)}
+                      >
+                        Quitar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-stone-200 bg-white p-4">
+          <p className="text-sm font-semibold text-stone-900">
+            Separacion de capital
+          </p>
+          <p className="mt-2 text-sm leading-6 text-stone-600">
+            El aporte mensual no genera resultado hasta pasar al capital
+            operativo. Las ganancias pendientes tambien se muestran aparte para
+            no inflar el total aportado.
+          </p>
+          <div className="mt-3 grid gap-2">
+            <FireRow
+              label="Aportes pendientes"
+              value={currencyFormatter.format(
+                analysis.pendingContributionCapital,
+              )}
+              detail="Dinero aportado, todavia fuera del bot operativo."
+            />
+            <FireRow
+              label="Ganancias pendientes"
+              value={currencyFormatter.format(analysis.pendingProfitCapital)}
+              detail="Resultado acumulado aun no reinvertido."
+            />
+            <FireRow
+              label="Ganancia acumulada"
+              value={currencyFormatter.format(analysis.accumulatedResult)}
+              detail="No se suma al capital total aportado."
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InvestmentPolicyPanel({
+  policy,
+  onPolicyChange,
+}: {
+  policy: InvestmentPolicySettings;
+  onPolicyChange: (key: keyof InvestmentPolicySettings, value: string) => void;
+}) {
+  const numericFields: {
+    key: keyof InvestmentPolicySettings;
+    label: string;
+    prefix?: string;
+    suffix?: string;
+    step: string;
+  }[] = [
+    {
+      key: "monthlyContributionTarget",
+      label: "Aporte mensual objetivo",
+      prefix: "USD",
+      step: "100",
+    },
+    {
+      key: "salaryInvestmentPercent",
+      label: "Salario a invertir",
+      suffix: "%",
+      step: "1",
+    },
+    {
+      key: "emergencyFundMonths",
+      label: "Colchon objetivo",
+      suffix: "meses",
+      step: "1",
+    },
+    {
+      key: "rebalanceTolerancePercent",
+      label: "Tolerancia desbalance",
+      suffix: "pp",
+      step: "0.5",
+    },
+  ];
+  const ruleFields: {
+    key: keyof InvestmentPolicySettings;
+    label: string;
+  }[] = [
+    { key: "drawdownRule", label: "Caidas fuertes" },
+    { key: "bitcoinRule", label: "Bitcoin" },
+    { key: "goldRule", label: "Oro" },
+    { key: "individualStocksRule", label: "Acciones individuales" },
+    { key: "realEstateRule", label: "Inmuebles" },
+  ];
+
+  return (
+    <div className="mt-5 rounded-md border border-stone-200 bg-stone-50 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-stone-950">
+            Politica personal de inversion
+          </h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-stone-600">
+            Reglas editables para que la cartera tenga criterio antes que
+            impulsos. Cambiarlas no crea movimientos.
+          </p>
+        </div>
+        <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700">
+          Plan, no opinion macro
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {numericFields.map((field) => (
+          <label key={field.key} className="grid gap-2">
+            <span className="text-xs font-semibold text-stone-600">
+              {field.label}
+            </span>
+            <div className={inputShellClass}>
+              {field.prefix ? (
+                <span className="mr-2 text-sm font-semibold text-stone-500">
+                  {field.prefix}
+                </span>
+              ) : null}
+              <input
+                autoComplete="off"
+                className={inputClass}
+                inputMode="decimal"
+                min="0"
+                name={`policy-${field.key}`}
+                step={field.step}
+                type="number"
+                value={policy[field.key] as number}
+                onChange={(event) =>
+                  onPolicyChange(field.key, event.target.value)
+                }
+              />
+              {field.suffix ? (
+                <span className="ml-2 text-sm font-semibold text-stone-500">
+                  {field.suffix}
+                </span>
+              ) : null}
+            </div>
+          </label>
+        ))}
+      </div>
+
+      <label className="mt-4 grid gap-2 md:max-w-sm">
+        <span className="text-xs font-semibold text-stone-600">
+          Frecuencia de rebalanceo
+        </span>
+        <select
+          autoComplete="off"
+          className="libertad-field h-12 rounded-md bg-white px-3 text-sm font-semibold text-stone-950"
+          name="policy-rebalance-frequency"
+          value={policy.rebalanceFrequency}
+          onChange={(event) =>
+            onPolicyChange("rebalanceFrequency", event.target.value)
+          }
+        >
+          <option value="mensual">Mensual</option>
+          <option value="trimestral">Trimestral</option>
+          <option value="semestral">Semestral</option>
+          <option value="anual">Anual</option>
+        </select>
+      </label>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {ruleFields.map((field) => (
+          <label key={field.key} className="grid gap-2">
+            <span className="text-xs font-semibold text-stone-600">
+              {field.label}
+            </span>
+            <textarea
+              autoComplete="off"
+              className="libertad-field min-h-20 resize-y rounded-md bg-white px-3 py-2 text-sm leading-6 text-stone-900"
+              name={`policy-${field.key}`}
+              value={policy[field.key] as string}
+              onChange={(event) =>
+                onPolicyChange(field.key, event.target.value)
+              }
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DebtLoadPanel({
+  analysis,
+}: {
+  analysis: ReturnType<typeof analyzeConfirmedDebtLoad>;
+}) {
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-stone-950">
+            Carga de deuda confirmada
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+            Solo usa deudas confirmadas. Las intenciones y analisis potenciales
+            quedan fuera del dashboard.
+          </p>
+        </div>
+        <div
+          className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-semibold ${
+            analysis.highRiskCount > 0
+              ? "border-red-200 bg-red-50 text-red-950"
+              : analysis.count > 0
+                ? "border-amber-200 bg-amber-50 text-amber-950"
+                : "border-stone-200 bg-stone-50 text-stone-700"
+          }`}
+        >
+          {analysis.count > 0
+            ? `${analysis.count} deuda(s)`
+            : "Sin deuda confirmada"}
+        </div>
+      </div>
+
+      {analysis.count === 0 ? (
+        <div className="mt-5 rounded-md border border-dashed border-stone-300 bg-stone-50 p-4 text-sm leading-6 text-stone-700">
+          Cuando confirmes una deuda real, aca vas a ver cuota mensual, costo
+          anual e impacto sobre el numero FIRE.
+        </div>
+      ) : (
+        <>
+          <div className="libertad-card-grid mt-5 grid gap-3">
+            <MetricCard
+              label="Presion mensual"
+              value={currencyFormatter.format(analysis.monthlyMarginImpact)}
+              tone={analysis.monthlyMarginImpact > 0 ? "amber" : "neutral"}
+            />
+            <MetricCard
+              label="Costo anual"
+              value={currencyFormatter.format(analysis.annualCost)}
+            />
+            <MetricCard
+              label="Deuda total"
+              value={currencyFormatter.format(analysis.principalBalance)}
+              tone="red"
+            />
+            <MetricCard
+              label="Impacto FIRE"
+              value={currencyFormatter.format(analysis.fireImpact)}
+              tone="green"
+            />
+            <MetricCard
+              label="Margen disponible"
+              value={currencyFormatter.format(analysis.monthlyDecisionMargin)}
+              tone={
+                analysis.debtPressureRisk === "alto"
+                  ? "red"
+                  : analysis.debtPressureRisk === "medio"
+                    ? "amber"
+                    : "green"
+              }
+            />
+            <MetricCard
+              label="Presion sobre margen"
+              value={
+                analysis.debtPressureRisk === "sin_datos"
+                  ? "Sin aporte base"
+                  : `${percentFormatter.format(analysis.debtPressurePercent)}%`
+              }
+              tone={
+                analysis.debtPressureRisk === "alto"
+                  ? "red"
+                  : analysis.debtPressureRisk === "medio"
+                    ? "amber"
+                    : "neutral"
+              }
+            />
+          </div>
+
+          {analysis.freedomWarning ? (
+            <div
+              aria-live="polite"
+              className={`mt-5 rounded-md border px-4 py-3 text-sm leading-6 ${
+                analysis.debtPressureRisk === "alto"
+                  ? "border-red-200 bg-red-50 text-red-950"
+                  : "border-amber-200 bg-amber-50 text-amber-950"
+              }`}
+            >
+              {analysis.freedomWarning}
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div className="libertad-soft-panel rounded-md p-4">
+              <p className="text-sm font-semibold text-stone-800">
+                Dependencia del sueldo
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                Las cuotas confirmadas consumen{" "}
+                {percentFormatter.format(analysis.salaryDependencyIncrease)}%
+                del aporte mensual cargado en tus datos base. Quedan{" "}
+                {currencyFormatter.format(analysis.monthlyDecisionMargin)} para
+                decidir sin tocar el plan.
+              </p>
+              <div className="mt-3 grid gap-2">
+                <FireRow
+                  label="Pago minimo"
+                  value={analysis.minimumPaymentCount.toString()}
+                  detail="Senal de tarjeta con presion alta."
+                />
+                <FireRow
+                  label="Riesgo alto"
+                  value={analysis.highRiskCount.toString()}
+                  detail="Lectura descriptiva, no recomendacion automatica."
                 />
               </div>
             </div>
 
-            <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              <MetricCard
-                label="Gasto anual"
-                value={currencyFormatter.format(metrics.annual)}
-              />
-              <MetricCard
-                label="Tiempo estimado"
-                value={yearsLabel}
-                tone="blue"
-              />
-              <MetricCard
-                label="Patrimonio invertido"
-                value={`${percentFormatter.format(metrics.investRatio)}%`}
-                tone="green"
-              />
-            </div>
-          </div>
-
-          <aside className="rounded-lg border border-stone-900 bg-stone-950 p-5 text-white shadow-sm sm:p-6">
-            <p className="text-sm font-medium text-stone-300">Lectura del mes</p>
-            <p className="mt-4 text-3xl font-semibold">
-              {metrics.completed >= 100
-                ? "Meta alcanzada"
-                : metrics.completed >= 50
-                  ? "La bola de nieve ya pesa"
-                  : "La maquina esta tomando forma"}
-            </p>
-            <p className="mt-4 text-sm leading-6 text-stone-300">
-              Con un aporte de {currencyFormatter.format(inputs.monthlyContribution)}
-              {" "}y un retorno anual esperado de{" "}
-              {percentFormatter.format(inputs.expectedAnnualReturn)}%, el tablero
-              estima {yearsLabel.toLowerCase()} para llegar al numero x25.
-            </p>
-            <div className="mt-5 grid gap-2">
-              <SignalRow
-                label="Movimientos confirmados"
-                value={confirmedTransactions.length.toString()}
-              />
-              <SignalRow
-                label="Impacto de notas"
-                value={currencyFormatter.format(transactionSummary.netWorthDelta)}
-              />
-              <SignalRow
-                label="Gasto recurrente detectado"
-                value={currencyFormatter.format(
-                  transactionSummary.recurringMonthlyExpenses,
-                )}
-              />
-            </div>
-          </aside>
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-stone-950">
-                  Datos base
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-stone-600">
-                  Estos valores son tu escenario base. Las notas confirmadas se
-                  suman encima sin pisar tus supuestos.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4">
-              {fields.map((field) => (
-                <label key={field.id} className="grid gap-2">
-                  <span className="text-sm font-medium text-stone-700">
-                    {field.label}
-                  </span>
-                  <div className="flex h-12 items-center rounded-md border border-stone-300 bg-stone-50 px-3 transition focus-within:border-emerald-700 focus-within:bg-white">
-                    {field.prefix ? (
-                      <span className="mr-2 text-sm font-semibold text-stone-500">
-                        {field.prefix}
-                      </span>
-                    ) : null}
-                    <input
-                      className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-stone-950 outline-none"
-                      min="0"
-                      step={field.step}
-                      type="number"
-                      value={inputs[field.id]}
-                      onChange={(event) =>
-                        updateInput(field.id, event.target.value)
-                      }
-                    />
-                    {field.suffix ? (
-                      <span className="ml-2 text-sm font-semibold text-stone-500">
-                        {field.suffix}
-                      </span>
-                    ) : null}
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-stone-950">
-                  Pulso financiero
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-stone-600">
-                  Lectura combinada de tus datos base y lo que ya confirmaste.
-                </p>
-              </div>
-              <a
-                className="inline-flex h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:border-stone-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-                href="#notas"
-              >
-                Capturar nota
-              </a>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <MetricCard
-                label="Patrimonio actual"
-                value={currencyFormatter.format(effectiveInputs.netWorth)}
-                tone="green"
-              />
-              <MetricCard
-                label="Capital invertido"
-                value={currencyFormatter.format(effectiveInputs.investedCapital)}
-                tone="blue"
-              />
-              <MetricCard
-                label="Gasto mensual deseado"
-                value={currencyFormatter.format(effectiveInputs.desiredMonthlySpend)}
-              />
-              <MetricCard
-                label="Aporte mensual"
-                value={currencyFormatter.format(inputs.monthlyContribution)}
-                tone="amber"
-              />
-            </div>
-
-            <div className="mt-6 rounded-md border border-stone-200 bg-stone-50 p-4">
+            <div className="rounded-md border border-stone-200 bg-white p-4">
               <p className="text-sm font-semibold text-stone-800">
-                Regla x25 activa
+                Senales de deuda
               </p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">
-                Cada {currencyFormatter.format(100)} menos de gasto mensual baja
-                tu numero de libertad en {currencyFormatter.format(30000)}.
+              {analysis.signals.length > 0 ? (
+                <ul className="mt-3 grid gap-2">
+                  {analysis.signals.slice(0, 4).map((signal) => (
+                    <li
+                      key={signal}
+                      className="grid grid-cols-[8px_minmax(0,1fr)] gap-2 text-sm leading-6 text-stone-700"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="mt-2.5 h-2 w-2 rounded-full bg-stone-500"
+                      />
+                      <span>{signal}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  No hay senales fuertes ademas del costo mensual confirmado.
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function LifestyleInflationPanel({
+  analysis,
+}: {
+  analysis: ReturnType<typeof analyzeLifestyleInflation>;
+}) {
+  const riskCopy = {
+    bajo: {
+      label: "Bajo",
+      classes: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    },
+    medio: {
+      label: "Medio",
+      classes: "border-amber-200 bg-amber-50 text-amber-950",
+    },
+    alto: {
+      label: "Alto",
+      classes: "border-red-200 bg-red-50 text-red-950",
+    },
+    "sin-datos": {
+      label: "Sin datos",
+      classes: "border-stone-200 bg-stone-50 text-stone-700",
+    },
+  } as const;
+  const currentSavingRate = `${percentFormatter.format(
+    analysis.current.savingRate,
+  )}%`;
+  const previousSavingRate = `${percentFormatter.format(
+    analysis.previous.savingRate,
+  )}%`;
+  const absorbedPercent = `${percentFormatter.format(
+    analysis.absorbedByExpensesPercent,
+  )}%`;
+  const risk = riskCopy[analysis.risk];
+  const hasPositiveIncomeIncrease = analysis.incomeIncrease > 0;
+  const absorbedExpense = Math.max(0, analysis.expenseIncrease);
+  const increaseRule = analysis.increaseRule;
+
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-stone-950">
+            Inflación del Estilo de Vida
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+            Compara solo transacciones confirmadas para ver si un aumento de
+            ingreso se está convirtiendo en libertad o en consumo.
+          </p>
+        </div>
+        <div
+          className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-semibold ${risk.classes}`}
+        >
+          Riesgo {risk.label}
+        </div>
+      </div>
+
+      {!analysis.hasComparison ? (
+        <div className="mt-5 rounded-md border border-dashed border-stone-300 bg-stone-50 p-4 text-sm leading-6 text-stone-700">
+          No hay suficiente historial para detectar inflación del estilo de vida
+          todavía.
+        </div>
+      ) : (
+        <>
+          <div className="libertad-card-grid mt-5 grid gap-3">
+            <MetricCard
+              label="Ingreso confirmado"
+              value={currencyFormatter.format(analysis.current.income)}
+              tone="green"
+            />
+            <MetricCard
+              label="Gasto confirmado"
+              value={currencyFormatter.format(analysis.current.expenses)}
+              tone="amber"
+            />
+            <MetricCard
+              label="Ahorro estimado"
+              value={currencyFormatter.format(analysis.current.estimatedSavings)}
+              tone={analysis.current.estimatedSavings >= 0 ? "blue" : "red"}
+            />
+            <MetricCard label="Tasa de ahorro" value={currentSavingRate} />
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div className="libertad-soft-panel rounded-md p-4">
+              <p className="text-sm font-semibold text-stone-800">
+                Comparación contra mes anterior
+              </p>
+              <div className="mt-3 grid gap-2">
+                <FireRow
+                  label="Aumento de ingresos"
+                  value={currencyFormatter.format(analysis.incomeIncrease)}
+                  detail={`Antes: ${currencyFormatter.format(
+                    analysis.previous.income,
+                  )}`}
+                />
+                <FireRow
+                  label="Aumento de gastos"
+                  value={currencyFormatter.format(analysis.expenseIncrease)}
+                  detail={`Antes: ${currencyFormatter.format(
+                    analysis.previous.expenses,
+                  )}`}
+                />
+                <FireRow
+                  label="Aumento absorbido por gasto"
+                  value={absorbedPercent}
+                  detail={`Tasa previa: ${previousSavingRate}`}
+                />
+              </div>
+            </div>
+
+            <div
+              className={`rounded-md border p-4 ${
+                analysis.alert
+                  ? "border-red-200 bg-red-50/70 text-red-950"
+                  : "border-stone-200 bg-stone-50 text-stone-800"
+              }`}
+            >
+              <p className="text-sm font-semibold">Lectura práctica</p>
+              <p className="mt-2 text-sm leading-6">
+                {hasPositiveIncomeIncrease
+                  ? `${currencyFormatter.format(
+                      absorbedExpense,
+                    )} de tu aumento fueron absorbidos por nuevos gastos. Capturaste ${currencyFormatter.format(
+                      analysis.capturedForFreedom,
+                    )} para libertad.`
+                  : "No hay aumento de ingreso confirmado este mes. El detector queda atento a cambios reales."}
+              </p>
+              <p className="mt-3 text-sm font-semibold">
+                {analysis.recommendation}
               </p>
             </div>
           </div>
-        </section>
 
-        <FireLeversPanel summary={transactionSummary} />
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div className="rounded-md border border-stone-200 bg-white p-4">
+              <p className="text-sm font-semibold text-stone-800">
+                Señales detectadas
+              </p>
+              {analysis.signals.length > 0 ? (
+                <ul className="mt-3 grid gap-2">
+                  {analysis.signals.map((signal) => (
+                    <li
+                      key={signal}
+                      className="grid grid-cols-[8px_minmax(0,1fr)] gap-2 text-sm leading-6 text-stone-700"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="mt-2.5 h-2 w-2 rounded-full bg-stone-500"
+                      />
+                      <span>{signal}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  No aparecen señales fuertes de inflación del estilo de vida en
+                  la comparación actual.
+                </p>
+              )}
+            </div>
 
-        <FinancialNotesModule onTransactionsChange={handleTransactionsChange} />
-      </div>
-    </main>
+            <div className="libertad-soft-panel rounded-md p-4">
+              <p className="text-sm font-semibold text-stone-800">
+                Conexiones FIRE
+              </p>
+              <div className="mt-3 grid gap-2">
+                {increaseRule ? (
+                  <>
+                    <FireRow
+                      label="70% ahorro/inversion"
+                      value={currencyFormatter.format(
+                        increaseRule.suggestedInvestment,
+                      )}
+                      detail="Parte del aumento protegida para libertad."
+                    />
+                    <FireRow
+                      label="20% mejora de vida"
+                      value={currencyFormatter.format(
+                        increaseRule.lifestyleUpgrade,
+                      )}
+                      detail="Disfrute controlado sin absorber todo el aumento."
+                    />
+                    <FireRow
+                      label="10% gusto personal"
+                      value={currencyFormatter.format(
+                        increaseRule.personalTreat,
+                      )}
+                      detail="Permiso acotado, separado del plan."
+                    />
+                  </>
+                ) : (
+                  <FireRow
+                    label="70/20/10"
+                    value="Sin aumento"
+                    detail="Aparece cuando hay aumento confirmado."
+                  />
+                )}
+                <FireRow
+                  label="Vivienda, transporte, comida"
+                  value={currencyFormatter.format(
+                    analysis.current.coreExpenses.vivienda +
+                      analysis.current.coreExpenses.transporte +
+                      analysis.current.coreExpenses.comida,
+                  )}
+                  detail="Gastos críticos confirmados este mes."
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -418,7 +2178,7 @@ function FireLeversPanel({ summary }: { summary: TransactionSummary }) {
   );
 
   return (
-    <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-stone-950">
@@ -434,7 +2194,7 @@ function FireLeversPanel({ summary }: { summary: TransactionSummary }) {
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="libertad-card-grid mt-5 grid gap-3">
         <MetricCard
           label="Gasto mensual confirmado"
           value={currencyFormatter.format(summary.monthlyConfirmedExpenses)}
@@ -452,7 +2212,7 @@ function FireLeversPanel({ summary }: { summary: TransactionSummary }) {
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
+        <div className="libertad-soft-panel rounded-md p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-stone-800">
               Categorias criticas
@@ -481,7 +2241,7 @@ function FireLeversPanel({ summary }: { summary: TransactionSummary }) {
           </div>
         </div>
 
-        <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
+        <div className="libertad-soft-panel rounded-md p-4">
           <p className="text-sm font-semibold text-stone-800">
             Impacto de reducir gasto mensual
           </p>
@@ -503,6 +2263,136 @@ function FireLeversPanel({ summary }: { summary: TransactionSummary }) {
   );
 }
 
+function PortfolioAssetRow({
+  asset,
+  manualAmount,
+  onManualAmountChange,
+  onTargetChange,
+}: {
+  asset: ReturnType<typeof analyzeTargetPortfolio>["assets"][number];
+  manualAmount: number;
+  onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
+  onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
+}) {
+  const imbalanceWidth = Math.min(50, Math.abs(asset.imbalancePercent));
+  const status = portfolioStatusCopy(asset.status);
+  const imbalanceSide =
+    asset.imbalancePercent < 0 ? "right-1/2" : "left-1/2";
+
+  return (
+    <div className="libertad-soft-panel rounded-md p-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_120px_150px_120px] lg:items-end">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-stone-900">
+              {asset.label}
+            </p>
+            <span
+              className={`rounded-full border px-2 py-1 text-xs font-semibold ${status.classes}`}
+            >
+              {status.label}
+            </span>
+            <span className="rounded-full border border-stone-200 bg-white px-2 py-1 text-xs font-medium text-stone-600">
+              {asset.currentSource === "derivado" ? "Derivado" : "Manual"}
+            </span>
+          </div>
+          <div
+            aria-label={`${asset.label}: desbalance ${percentFormatter.format(
+              asset.imbalancePercent,
+            )} puntos porcentuales`}
+            className="relative mt-3 h-3 overflow-hidden rounded-full bg-white ring-1 ring-stone-200"
+            role="img"
+          >
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 top-0 h-full w-px bg-stone-300"
+            />
+            <div
+              className={`absolute top-0 h-full rounded-full ${imbalanceSide} ${status.barClass}`}
+              style={{ width: `${imbalanceWidth}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs leading-5 text-stone-600">
+            Actual {percentFormatter.format(asset.currentPercent)}% vs objetivo{" "}
+            {percentFormatter.format(asset.targetPercent)}%.
+          </p>
+        </div>
+
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-stone-600">
+            Objetivo %
+          </span>
+          <input
+            autoComplete="off"
+            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
+            inputMode="decimal"
+            min="0"
+            name={`target-${asset.assetClass}`}
+            step="0.5"
+            type="number"
+            value={asset.targetPercent}
+            onChange={(event) =>
+              onTargetChange(asset.assetClass, event.target.value)
+            }
+          />
+        </label>
+
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-stone-600">
+            Actual manual
+          </span>
+          <input
+            autoComplete="off"
+            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950 disabled:bg-stone-100 disabled:text-stone-500 libertad-number"
+            disabled={asset.currentSource === "derivado"}
+            inputMode="decimal"
+            min="0"
+            name={`manual-${asset.assetClass}`}
+            step="100"
+            type="number"
+            value={manualAmount}
+            onChange={(event) =>
+              onManualAmountChange(asset.assetClass, event.target.value)
+            }
+          />
+        </label>
+
+        <div>
+          <p className="text-xs font-semibold text-stone-600">Desbalance</p>
+          <p className="libertad-number mt-2 text-sm font-semibold text-stone-950">
+            {currencyFormatter.format(asset.imbalanceAmount)}
+          </p>
+          <p className="libertad-number text-xs text-stone-500">
+            {percentFormatter.format(asset.imbalancePercent)} pp
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function portfolioStatusCopy(status: "sobrepeso" | "bajo_peso" | "alineado") {
+  const copy = {
+    sobrepeso: {
+      label: "Sobrepeso",
+      classes: "border-amber-200 bg-amber-50 text-amber-950",
+      barClass: "bg-amber-600",
+    },
+    bajo_peso: {
+      label: "Bajo peso",
+      classes: "border-sky-200 bg-sky-50 text-sky-950",
+      barClass: "bg-sky-600",
+    },
+    alineado: {
+      label: "Alineado",
+      classes: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      barClass: "bg-emerald-700",
+    },
+  };
+
+  return copy[status];
+}
+
 function FireRow({
   label,
   value,
@@ -514,11 +2404,13 @@ function FireRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-md bg-white px-3 py-2">
-      <div>
+      <div className="min-w-0">
         <p className="text-sm font-medium text-stone-800">{label}</p>
-        <p className="text-xs text-stone-500">{detail}</p>
+        <p className="text-xs leading-5 text-stone-500">{detail}</p>
       </div>
-      <p className="text-sm font-semibold text-stone-950">{value}</p>
+      <p className="libertad-number shrink-0 text-right text-sm font-semibold text-stone-950">
+        {value}
+      </p>
     </div>
   );
 }
@@ -530,19 +2422,22 @@ function MetricCard({
 }: {
   label: string;
   value: string;
-  tone?: "neutral" | "green" | "blue" | "amber";
+  tone?: "neutral" | "green" | "blue" | "amber" | "red";
 }) {
   const toneClasses = {
     neutral: "border-stone-200 bg-stone-50 text-stone-950",
     green: "border-emerald-100 bg-emerald-50 text-emerald-950",
     blue: "border-sky-100 bg-sky-50 text-sky-950",
     amber: "border-amber-100 bg-amber-50 text-amber-950",
+    red: "border-red-100 bg-red-50 text-red-950",
   };
 
   return (
-    <div className={`rounded-md border p-4 ${toneClasses[tone]}`}>
+    <div className={`min-w-0 rounded-md border p-4 ${toneClasses[tone]}`}>
       <p className="text-sm font-medium opacity-75">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className="libertad-number mt-2 break-words text-[1.35rem] font-semibold leading-tight">
+        {value}
+      </p>
     </div>
   );
 }
@@ -550,8 +2445,10 @@ function MetricCard({
 function SignalRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-md bg-white/8 px-3 py-2">
-      <p className="text-sm text-stone-300">{label}</p>
-      <p className="text-sm font-semibold text-white">{value}</p>
+      <p className="min-w-0 text-sm text-stone-300">{label}</p>
+      <p className="libertad-number shrink-0 text-right text-sm font-semibold text-white">
+        {value}
+      </p>
     </div>
   );
 }
