@@ -394,7 +394,7 @@ Reglas:
 
 ---
 
-## v2.0.0 Margen Financiero
+## v2.0.0 Margen Financiero - cerrado
 
 Objetivo:
 Medir libertad real mensual, no solo patrimonio.
@@ -434,6 +434,20 @@ Reglas:
 * permitir supuestos separados;
 * conectar con deuda, gastos y roadmap;
 * priorizar claridad sobre detalle contable.
+
+Estado:
+
+* modelo `FinancialMarginAnalysis` agregado;
+* analizador de margen mensual usando solo transacciones confirmadas;
+* gastos fijos activos conectados como supuestos separados;
+* colchon confirmado convertido en meses cubiertos;
+* deuda mensual confirmada expresada como presion sobre ingreso;
+* gastos esenciales y no esenciales separados;
+* estado general visible: fragil, ajustado, estable o fuerte;
+* punto de tranquilidad calculado como seis meses de gasto mensual actual;
+* pantalla dedicada de Margen agregada a la navegacion;
+* resumen de margen agregado al dashboard operativo;
+* tests de margen financiero agregados.
 
 ---
 

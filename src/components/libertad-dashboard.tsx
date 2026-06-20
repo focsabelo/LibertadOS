@@ -26,6 +26,7 @@ import {
 import {
   analyzeConfirmedDebtLoad,
   analyzeBotOpera24hs,
+  analyzeFinancialMargin,
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
   analyzeWealthRoadmap,
@@ -153,6 +154,7 @@ type AppSection =
   | "dashboard"
   | "notas"
   | "decisiones"
+  | "margen"
   | "cartera"
   | "deuda"
   | "semana"
@@ -181,6 +183,11 @@ const modules: {
     id: "decisiones",
     label: "Decisiones",
     description: "Filtro anti-error",
+  },
+  {
+    id: "margen",
+    label: "Margen",
+    description: "Libertad mensual",
   },
   {
     id: "cartera",
@@ -528,6 +535,14 @@ export function LibertadDashboard() {
         inputs.monthlyContribution,
       ),
     [confirmedTransactions, inputs.monthlyContribution],
+  );
+  const financialMargin = useMemo(
+    () =>
+      analyzeFinancialMargin({
+        transactions: confirmedTransactions,
+        fixedExpenses: fixedMonthlyExpenses,
+      }),
+    [confirmedTransactions, fixedMonthlyExpenses],
   );
   const targetPortfolio = useMemo(
     () => analyzeTargetPortfolio(portfolioSettings, confirmedTransactions),
@@ -941,27 +956,33 @@ export function LibertadDashboard() {
   const activeModule =
     modules.find((module) => module.id === activeSection) ?? modules[0];
   const needsDebtAttention = confirmedDebtLoad.highRiskCount > 0;
+  const needsMarginAttention =
+    financialMargin.state === "fragil" || financialMargin.state === "ajustado";
   const needsPortfolioAttention = Boolean(targetPortfolio.targetWarning);
   const needsLifestyleAttention = lifestyleInflation.risk === "alto";
   const needsWeeklyExecution = weeklyExecution.status !== "cumplido";
   const primaryAttention = needsDebtAttention
     ? "Revisar deuda confirmada"
-    : needsLifestyleAttention
-      ? "Revisar inflacion de estilo de vida"
-      : needsPortfolioAttention
-        ? "Ajustar objetivos de cartera"
-        : needsWeeklyExecution
-          ? "Cerrar sistema semanal"
-          : confirmedTransactions.length === 0
-            ? "Capturar y confirmar el primer movimiento"
-            : "Mantener captura semanal";
+    : needsMarginAttention
+      ? "Revisar margen financiero"
+      : needsLifestyleAttention
+        ? "Revisar inflacion de estilo de vida"
+        : needsPortfolioAttention
+          ? "Ajustar objetivos de cartera"
+          : needsWeeklyExecution
+            ? "Cerrar sistema semanal"
+            : confirmedTransactions.length === 0
+              ? "Capturar y confirmar el primer movimiento"
+              : "Mantener captura semanal";
   const weeklyAction = needsDebtAttention
     ? "Abrir deuda y revisar la presion mensual."
-    : needsLifestyleAttention
-      ? "Abrir dashboard y aplicar una regla concreta al aumento."
-      : needsPortfolioAttention
-        ? "Abrir cartera y corregir objetivos hasta 100%."
-        : weeklyExecution.recommendation;
+    : needsMarginAttention
+      ? "Abrir margen y acercar el colchon al punto de tranquilidad."
+      : needsLifestyleAttention
+        ? "Abrir dashboard y aplicar una regla concreta al aumento."
+        : needsPortfolioAttention
+          ? "Abrir cartera y corregir objetivos hasta 100%."
+          : weeklyExecution.recommendation;
 
   if (supabaseConfigError) {
     return (
@@ -1043,7 +1064,7 @@ export function LibertadDashboard() {
               </div>
             </div>
             <nav
-              className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl lg:grid-cols-4"
+              className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-2xl lg:grid-cols-5"
               aria-label="Secciones"
             >
               {modules.map((module) => (
@@ -1208,6 +1229,12 @@ export function LibertadDashboard() {
                         transactionSummary.recurringMonthlyExpenses,
                       )}
                     />
+                    <SignalRow
+                      label="Margen mensual"
+                      value={currencyFormatter.format(
+                        financialMargin.availableMonthlyMargin,
+                      )}
+                    />
                   </div>
                 </aside>
               </section>
@@ -1256,6 +1283,19 @@ export function LibertadDashboard() {
                     value={currencyFormatter.format(inputs.monthlyContribution)}
                     tone="amber"
                   />
+                  <MetricCard
+                    label="Margen mensual"
+                    value={currencyFormatter.format(
+                      financialMargin.availableMonthlyMargin,
+                    )}
+                    tone={
+                      financialMargin.state === "fragil"
+                        ? "red"
+                        : financialMargin.state === "ajustado"
+                          ? "amber"
+                          : "green"
+                    }
+                  />
                 </div>
 
                 <div className="libertad-soft-panel mt-6 rounded-md p-4">
@@ -1274,6 +1314,12 @@ export function LibertadDashboard() {
                 analysis={weeklyExecution}
                 onOpenNotes={() => selectSection("notas")}
                 onToggleItem={toggleWeeklyExecutionItem}
+              />
+
+              <FinancialMarginPanel
+                analysis={financialMargin}
+                compact
+                onOpenSettings={() => selectSection("configuracion")}
               />
 
               <FireLeversPanel summary={transactionSummary} />
@@ -1309,6 +1355,13 @@ export function LibertadDashboard() {
 
           {activeSection === "deuda" ? (
             <DebtLoadPanel analysis={confirmedDebtLoad} />
+          ) : null}
+
+          {activeSection === "margen" ? (
+            <FinancialMarginPanel
+              analysis={financialMargin}
+              onOpenSettings={() => selectSection("configuracion")}
+            />
           ) : null}
 
           {activeSection === "semana" ? (
@@ -2084,8 +2137,8 @@ function FixedMonthlyExpensesPanel({
             Gastos fijos mensuales
           </h2>
           <p className="mt-1 text-sm leading-6 text-stone-600">
-            Registra gastos recurrentes para revisarlos aparte. Por ahora son
-            informativos: no modifican formulas ni el dashboard principal.
+            Registra gastos recurrentes para revisarlos aparte. Alimentan el
+            modulo de margen como supuestos, separados de las notas confirmadas.
           </p>
         </div>
         <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
@@ -3061,6 +3114,261 @@ function InvestmentPolicyPanel({
       </div>
     </div>
   );
+}
+
+function FinancialMarginPanel({
+  analysis,
+  compact = false,
+  onOpenSettings,
+}: {
+  analysis: ReturnType<typeof analyzeFinancialMargin>;
+  compact?: boolean;
+  onOpenSettings: () => void;
+}) {
+  const state = financialMarginStateCopy(analysis.state);
+  const calmProgress =
+    analysis.calmPointAmount > 0
+      ? Math.min(100, (analysis.emergencyFund / analysis.calmPointAmount) * 100)
+      : 0;
+
+  return (
+    <section className="libertad-surface rounded-lg p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-stone-950">
+            Margen financiero
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+            Mide libertad mensual real: ingreso confirmado, gastos activos,
+            deuda mensual y colchon. Los gastos fijos son supuestos separados.
+          </p>
+        </div>
+        <div
+          className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-semibold ${state.classes}`}
+        >
+          Estado {state.label}
+        </div>
+      </div>
+
+      <div className="libertad-card-grid mt-5 grid gap-3">
+        <MetricCard
+          label="Margen disponible"
+          value={currencyFormatter.format(analysis.availableMonthlyMargin)}
+          tone={state.metricTone}
+        />
+        <MetricCard
+          label="Meses de colchon"
+          value={`${numberFormatter.format(analysis.monthsCovered)} meses`}
+          tone={analysis.monthsCovered >= 3 ? "green" : "amber"}
+        />
+        <MetricCard
+          label="Presion de deuda"
+          value={`${percentFormatter.format(analysis.debtPressurePercent)}%`}
+          tone={analysis.debtPressurePercent >= 20 ? "red" : "neutral"}
+        />
+        <MetricCard
+          label="Tasa de ahorro"
+          value={`${percentFormatter.format(analysis.savingRate)}%`}
+          tone={analysis.savingRate >= 10 ? "green" : "amber"}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.45fr)]">
+        <div className="libertad-soft-panel rounded-md p-4">
+          <div className="flex items-center justify-between gap-4 text-sm font-medium">
+            <span className="text-stone-700">Punto de tranquilidad</span>
+            <span className="libertad-number text-base font-semibold text-stone-950">
+              {currencyFormatter.format(analysis.emergencyFund)} /{" "}
+              {currencyFormatter.format(analysis.calmPointAmount)}
+            </span>
+          </div>
+          <div
+            aria-label={`Colchon cubierto ${percentFormatter.format(calmProgress)}%`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={calmProgress}
+            className="libertad-meter mt-4 h-4"
+            role="progressbar"
+          >
+            <div
+              className="h-full rounded-full bg-emerald-700"
+              style={{ width: `${calmProgress}%` }}
+            />
+          </div>
+          <p className="mt-3 text-sm leading-6 text-stone-700">
+            Faltan{" "}
+            <span className="libertad-number font-semibold text-stone-950">
+              {currencyFormatter.format(analysis.calmPointDistance)}
+            </span>{" "}
+            para cubrir seis meses del gasto mensual actual.
+          </p>
+        </div>
+
+        <div className="rounded-md border border-stone-200 bg-white p-4">
+          <p className="text-sm font-semibold text-stone-800">
+            Lectura practica
+          </p>
+          <p className="mt-2 text-sm leading-6 text-stone-700">
+            {state.body}
+          </p>
+          <p className="mt-3 text-sm font-semibold text-stone-950">
+            {analysis.recommendation}
+          </p>
+        </div>
+      </div>
+
+      {!compact ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <div className="libertad-soft-panel rounded-md p-4">
+            <p className="text-sm font-semibold text-stone-800">
+              Composicion mensual
+            </p>
+            <div className="mt-3 grid gap-2">
+              <FireRow
+                label="Ingreso confirmado"
+                value={currencyFormatter.format(analysis.monthlyIncome)}
+                detail={`Mes ${analysis.monthKey}; solo movimientos reales.`}
+              />
+              <FireRow
+                label="Gastos fijos"
+                value={currencyFormatter.format(analysis.fixedMonthlyExpenses)}
+                detail="Supuestos activos mas gastos recurrentes confirmados."
+              />
+              <FireRow
+                label="Gastos variables"
+                value={currencyFormatter.format(analysis.variableMonthlyExpenses)}
+                detail="Gastos no recurrentes confirmados este mes."
+              />
+              <FireRow
+                label="Deuda mensual"
+                value={currencyFormatter.format(analysis.debtMonthlyPayments)}
+                detail="Cuotas confirmadas, aunque hayan nacido en meses anteriores."
+              />
+            </div>
+          </div>
+
+          <div className="libertad-soft-panel rounded-md p-4">
+            <p className="text-sm font-semibold text-stone-800">
+              Libertad de decision
+            </p>
+            <div className="mt-3 grid gap-2">
+              <FireRow
+                label="Esenciales"
+                value={currencyFormatter.format(analysis.essentialExpenses)}
+                detail="Vivienda, transporte, comida, servicios, salud y deuda."
+              />
+              <FireRow
+                label="No esenciales"
+                value={currencyFormatter.format(analysis.nonEssentialExpenses)}
+                detail="Lo que puede revisarse antes de tocar el plan."
+              />
+              <FireRow
+                label="Dependencia del sueldo"
+                value={financialMarginDependencyLabel(
+                  analysis.paycheckDependency,
+                )}
+                detail="Cuanto pesa el siguiente ingreso para sostener el mes."
+              />
+              <FireRow
+                label="Cambiar de trabajo"
+                value={financialMarginCapacityLabel(
+                  analysis.changeJobCapacity,
+                )}
+                detail="Lectura por meses cubiertos, no recomendacion laboral."
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border border-stone-200 bg-white p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-stone-800">
+                  Senales
+                </p>
+                <ul className="mt-3 grid gap-2">
+                  {analysis.signals.map((signal) => (
+                    <li
+                      key={signal}
+                      className="grid grid-cols-[8px_minmax(0,1fr)] gap-2 text-sm leading-6 text-stone-700"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="mt-2.5 h-2 w-2 rounded-full bg-stone-500"
+                      />
+                      <span>{signal}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button
+                className="inline-flex h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                type="button"
+                onClick={onOpenSettings}
+              >
+                Revisar gastos fijos
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function financialMarginStateCopy(state: ReturnType<typeof analyzeFinancialMargin>["state"]) {
+  const copy = {
+    fragil: {
+      label: "fragil",
+      classes: "border-red-200 bg-red-50 text-red-950",
+      metricTone: "red",
+      body: "Tu margen actual es fragil: dependes demasiado del siguiente sueldo o el mes queda negativo.",
+    },
+    ajustado: {
+      label: "ajustado",
+      classes: "border-amber-200 bg-amber-50 text-amber-950",
+      metricTone: "amber",
+      body: "Tu margen es positivo, pero todavia hay poca holgura para errores, deuda o cambios de ingreso.",
+    },
+    estable: {
+      label: "estable",
+      classes: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      metricTone: "green",
+      body: "Tu margen sostiene el mes y ya existe capacidad de decir no sin romper el plan.",
+    },
+    fuerte: {
+      label: "fuerte",
+      classes: "border-emerald-300 bg-emerald-100 text-emerald-950",
+      metricTone: "green",
+      body: "Tu margen y colchon dan buena libertad mensual; el riesgo principal es agregar gastos fijos nuevos.",
+    },
+  } as const;
+
+  return copy[state];
+}
+
+function financialMarginDependencyLabel(
+  dependency: ReturnType<typeof analyzeFinancialMargin>["paycheckDependency"],
+) {
+  const labels = {
+    alta: "Alta",
+    media: "Media",
+    baja: "Baja",
+  };
+
+  return labels[dependency];
+}
+
+function financialMarginCapacityLabel(
+  capacity: ReturnType<typeof analyzeFinancialMargin>["changeJobCapacity"],
+) {
+  const labels = {
+    baja: "Baja",
+    limitada: "Limitada",
+    moderada: "Moderada",
+    alta: "Alta",
+  };
+
+  return labels[capacity];
 }
 
 function DebtLoadPanel({

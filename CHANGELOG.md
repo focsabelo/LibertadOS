@@ -141,6 +141,15 @@
 * Dashboard principal muestra la accion semanal sin convertir checks en movimientos reales.
 * Tests de analisis semanal y persistencia agregados al comando `npm run test:parser`.
 
+## v2.0.0 - Margen Financiero
+
+* Nueva seccion Margen para medir libertad mensual real.
+* Calculo de margen disponible, meses de colchon, presion de deuda, tasa de ahorro y estado general.
+* Gastos fijos activos conectados como supuestos separados, sin convertirlos en transacciones confirmadas.
+* Separacion entre gastos esenciales, no esenciales, deuda mensual y punto de tranquilidad.
+* Dashboard operativo muestra el margen mensual y prioriza la revision cuando el estado es fragil o ajustado.
+* Tests de margen financiero agregados usando solo movimientos reales y descartando intenciones.
+
 Todas las versiones verificadas con:
 
 * npm run lint

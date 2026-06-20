@@ -28,6 +28,8 @@ export type DebtKind =
 export type DebtUse = "herramienta" | "consumo" | "mixta" | "desconocida";
 export type DebtRisk = "bajo" | "medio" | "alto" | "sin_datos";
 export type DebtPressureRisk = "bajo" | "medio" | "alto" | "sin_datos";
+export type FinancialMarginState = "fragil" | "ajustado" | "estable" | "fuerte";
+export type ChangeJobCapacity = "baja" | "limitada" | "moderada" | "alta";
 
 export type IncomeRuleSuggestion = {
   emergencyFund: number;
@@ -125,6 +127,48 @@ export type ConfirmedDebtLoadAnalysis = {
   debtPressurePercent: number;
   freedomWarning?: string;
   signals: string[];
+};
+
+export type FinancialMarginTransaction = {
+  type: string;
+  amount: number;
+  date: string;
+  category?: string;
+  recurring?: boolean;
+  intent?: string;
+  ignored?: boolean;
+  debt?: Partial<DebtAnalysis>;
+};
+
+export type FinancialMarginFixedExpense = {
+  name?: string;
+  category?: string;
+  monthlyAmount: number;
+  currency?: string;
+  active?: boolean;
+};
+
+export type FinancialMarginAnalysis = {
+  monthKey: string;
+  monthlyIncome: number;
+  fixedMonthlyExpenses: number;
+  variableMonthlyExpenses: number;
+  debtMonthlyPayments: number;
+  availableMonthlyMargin: number;
+  emergencyFund: number;
+  monthlyBurnRate: number;
+  monthsCovered: number;
+  savingRate: number;
+  debtPressurePercent: number;
+  essentialExpenses: number;
+  nonEssentialExpenses: number;
+  calmPointAmount: number;
+  calmPointDistance: number;
+  state: FinancialMarginState;
+  changeJobCapacity: ChangeJobCapacity;
+  paycheckDependency: "alta" | "media" | "baja";
+  signals: string[];
+  recommendation: string;
 };
 
 export type WeeklyExecutionItemId =
@@ -814,6 +858,146 @@ export function analyzeConfirmedDebtLoad(
   summary.signals = Array.from(signals);
 
   return summary;
+}
+
+export function analyzeFinancialMargin({
+  transactions,
+  fixedExpenses = [],
+  today = new Date(),
+  calmPointMonths = 6,
+}: {
+  transactions: FinancialMarginTransaction[];
+  fixedExpenses?: FinancialMarginFixedExpense[];
+  today?: Date;
+  calmPointMonths?: number;
+}): FinancialMarginAnalysis {
+  const monthKey = toMonthKey(today);
+  const realTransactions = transactions.filter(isRealFinancialMarginTransaction);
+  const currentMonthTransactions = realTransactions.filter(
+    (transaction) => toMonthKey(transaction.date) === monthKey,
+  );
+  const fixedAssumptions = fixedExpenses.reduce((total, expense) => {
+    if (expense.active === false || normalizeCurrencyCode(expense.currency) !== "USD") {
+      return total;
+    }
+
+    return total + normalizePositiveNumber(expense.monthlyAmount);
+  }, 0);
+  const confirmedRecurringExpenses = currentMonthTransactions.reduce(
+    (total, transaction) => {
+      if (transaction.type !== "gasto" || !transaction.recurring) {
+        return total;
+      }
+
+      return total + normalizePositiveNumber(transaction.amount);
+    },
+    0,
+  );
+  const fixedMonthlyExpenses = fixedAssumptions + confirmedRecurringExpenses;
+  const variableMonthlyExpenses = currentMonthTransactions.reduce(
+    (total, transaction) => {
+      if (
+        transaction.type !== "gasto" ||
+        transaction.recurring ||
+        transaction.debt?.monthlyMarginImpact
+      ) {
+        return total;
+      }
+
+      return total + normalizePositiveNumber(transaction.amount);
+    },
+    0,
+  );
+  const debtMonthlyPayments = realTransactions.reduce((total, transaction) => {
+    if (transaction.type !== "deuda") {
+      return total;
+    }
+
+    return total + normalizePositiveNumber(transaction.debt?.monthlyMarginImpact ?? 0);
+  }, 0);
+  const monthlyIncome = currentMonthTransactions.reduce((total, transaction) => {
+    if (transaction.type !== "ingreso") {
+      return total;
+    }
+
+    return total + normalizePositiveNumber(transaction.amount);
+  }, 0);
+  const emergencyFund = realTransactions.reduce((total, transaction) => {
+    if (transaction.type !== "ahorro" || !isEmergencyFundCategory(transaction.category)) {
+      return total;
+    }
+
+    return total + normalizePositiveNumber(transaction.amount);
+  }, 0);
+  const essentialExpenses =
+    debtMonthlyPayments +
+    sumFixedExpensesByEssentialCategory(fixedExpenses) +
+    currentMonthTransactions.reduce((total, transaction) => {
+      if (
+        transaction.type !== "gasto" ||
+        !isEssentialMarginCategory(transaction.category)
+      ) {
+        return total;
+      }
+
+      return total + normalizePositiveNumber(transaction.amount);
+    }, 0);
+  const totalOutflow =
+    fixedMonthlyExpenses + variableMonthlyExpenses + debtMonthlyPayments;
+  const nonEssentialExpenses = Math.max(0, totalOutflow - essentialExpenses);
+  const availableMonthlyMargin = monthlyIncome - totalOutflow;
+  const monthsCovered =
+    totalOutflow > 0 ? roundToTwo(emergencyFund / totalOutflow) : 0;
+  const savingRate =
+    monthlyIncome > 0 ? roundToTwo((availableMonthlyMargin / monthlyIncome) * 100) : 0;
+  const debtPressurePercent =
+    monthlyIncome > 0
+      ? roundToTwo((debtMonthlyPayments / monthlyIncome) * 100)
+      : 0;
+  const calmPointAmount = totalOutflow * Math.max(0, calmPointMonths);
+  const calmPointDistance = Math.max(0, calmPointAmount - emergencyFund);
+  const state = financialMarginState({
+    monthlyIncome,
+    availableMonthlyMargin,
+    savingRate,
+    monthsCovered,
+    debtPressurePercent,
+  });
+  const changeJobCapacity = marginChangeJobCapacity(monthsCovered);
+  const paycheckDependency = marginPaycheckDependency({
+    monthlyIncome,
+    availableMonthlyMargin,
+    monthsCovered,
+  });
+
+  return {
+    monthKey,
+    monthlyIncome,
+    fixedMonthlyExpenses,
+    variableMonthlyExpenses,
+    debtMonthlyPayments,
+    availableMonthlyMargin,
+    emergencyFund,
+    monthlyBurnRate: totalOutflow,
+    monthsCovered,
+    savingRate,
+    debtPressurePercent,
+    essentialExpenses,
+    nonEssentialExpenses,
+    calmPointAmount,
+    calmPointDistance,
+    state,
+    changeJobCapacity,
+    paycheckDependency,
+    signals: financialMarginSignals({
+      monthlyIncome,
+      availableMonthlyMargin,
+      monthsCovered,
+      debtPressurePercent,
+      emergencyFund,
+    }),
+    recommendation: financialMarginRecommendation(state),
+  };
 }
 
 export function analyzeWeeklyExecution({
@@ -1654,6 +1838,199 @@ function isRealTransaction(transaction: LifestyleInflationTransaction) {
     Number.isFinite(transaction.amount) &&
     transaction.amount > 0
   );
+}
+
+function isRealFinancialMarginTransaction(
+  transaction: FinancialMarginTransaction,
+) {
+  return (
+    !transaction.ignored &&
+    transaction.intent === "real" &&
+    Number.isFinite(transaction.amount) &&
+    transaction.amount > 0
+  );
+}
+
+function normalizeCurrencyCode(currency?: string) {
+  return (currency ?? "USD").trim().toUpperCase();
+}
+
+function normalizePositiveNumber(value: number) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function roundToTwo(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function isEmergencyFundCategory(category?: string) {
+  const normalized = normalizeMarginCategory(category);
+
+  return ["colchon", "emergencia", "liquidez", "fondo"].some((keyword) =>
+    normalized.includes(keyword),
+  );
+}
+
+function isEssentialMarginCategory(category?: string) {
+  return [
+    "vivienda",
+    "transporte",
+    "comida",
+    "servicios",
+    "salud",
+    "seguros",
+    "impuestos",
+  ].includes(normalizeMarginCategory(category));
+}
+
+function sumFixedExpensesByEssentialCategory(
+  fixedExpenses: FinancialMarginFixedExpense[],
+) {
+  return fixedExpenses.reduce((total, expense) => {
+    if (
+      expense.active === false ||
+      normalizeCurrencyCode(expense.currency) !== "USD" ||
+      !isEssentialMarginCategory(expense.category)
+    ) {
+      return total;
+    }
+
+    return total + normalizePositiveNumber(expense.monthlyAmount);
+  }, 0);
+}
+
+function normalizeMarginCategory(category?: string) {
+  return (category ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
+function financialMarginState({
+  monthlyIncome,
+  availableMonthlyMargin,
+  savingRate,
+  monthsCovered,
+  debtPressurePercent,
+}: {
+  monthlyIncome: number;
+  availableMonthlyMargin: number;
+  savingRate: number;
+  monthsCovered: number;
+  debtPressurePercent: number;
+}): FinancialMarginState {
+  if (
+    monthlyIncome <= 0 ||
+    availableMonthlyMargin < 0 ||
+    monthsCovered < 1 ||
+    debtPressurePercent >= 35
+  ) {
+    return "fragil";
+  }
+
+  if (savingRate < 10 || monthsCovered < 3 || debtPressurePercent >= 20) {
+    return "ajustado";
+  }
+
+  if (savingRate >= 25 && monthsCovered >= 6 && debtPressurePercent < 10) {
+    return "fuerte";
+  }
+
+  return "estable";
+}
+
+function marginChangeJobCapacity(monthsCovered: number): ChangeJobCapacity {
+  if (monthsCovered >= 9) {
+    return "alta";
+  }
+
+  if (monthsCovered >= 3) {
+    return "moderada";
+  }
+
+  if (monthsCovered >= 1) {
+    return "limitada";
+  }
+
+  return "baja";
+}
+
+function marginPaycheckDependency({
+  monthlyIncome,
+  availableMonthlyMargin,
+  monthsCovered,
+}: {
+  monthlyIncome: number;
+  availableMonthlyMargin: number;
+  monthsCovered: number;
+}) {
+  if (monthlyIncome <= 0 || availableMonthlyMargin < 0 || monthsCovered < 1) {
+    return "alta";
+  }
+
+  if (availableMonthlyMargin / monthlyIncome < 0.15 || monthsCovered < 3) {
+    return "media";
+  }
+
+  return "baja";
+}
+
+function financialMarginSignals({
+  monthlyIncome,
+  availableMonthlyMargin,
+  monthsCovered,
+  debtPressurePercent,
+  emergencyFund,
+}: {
+  monthlyIncome: number;
+  availableMonthlyMargin: number;
+  monthsCovered: number;
+  debtPressurePercent: number;
+  emergencyFund: number;
+}) {
+  const signals: string[] = [];
+
+  if (monthlyIncome <= 0) {
+    signals.push("Falta ingreso confirmado del mes.");
+  }
+
+  if (availableMonthlyMargin < 0) {
+    signals.push("El mes queda por debajo de cero antes de invertir.");
+  }
+
+  if (emergencyFund <= 0) {
+    signals.push("No hay colchon confirmado.");
+  } else if (monthsCovered < 3) {
+    signals.push("El colchon todavia cubre menos de 3 meses.");
+  }
+
+  if (debtPressurePercent >= 20) {
+    signals.push("La deuda consume una parte importante del ingreso confirmado.");
+  }
+
+  if (signals.length === 0) {
+    signals.push("Margen mensual positivo con colchon operativo.");
+  }
+
+  return signals;
+}
+
+function financialMarginRecommendation(state: FinancialMarginState) {
+  if (state === "fragil") {
+    return "Bajar gasto fijo o deuda antes de asumir decisiones nuevas.";
+  }
+
+  if (state === "ajustado") {
+    return "Separar primero colchon y revisar gastos fijos esta semana.";
+  }
+
+  if (state === "estable") {
+    return "Mantener margen positivo y acercar el colchon al punto de tranquilidad.";
+  }
+
+  return "Proteger el margen y evitar que nuevos gastos fijos absorban la ventaja.";
 }
 
 function isLifestyleBigPurchase(transaction: LifestyleInflationTransaction) {

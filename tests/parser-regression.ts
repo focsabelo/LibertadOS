@@ -4,12 +4,15 @@ import {
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
   analyzeLifestyleInflation,
+  analyzeFinancialMargin,
   analyzeConfirmedDebtLoad,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
   freedomNumber,
   type ConfirmedDebtLoadTransaction,
+  type FinancialMarginFixedExpense,
+  type FinancialMarginTransaction,
   type LifestyleInflationRisk,
   type LifestyleInflationTransaction,
   type TargetPortfolioSettings,
@@ -682,6 +685,24 @@ type WeeklyExecutionCase = {
   overdueAction: string;
 };
 
+type FinancialMarginCase = {
+  name: string;
+  transactions: FinancialMarginTransaction[];
+  fixedExpenses: FinancialMarginFixedExpense[];
+  monthlyIncome: number;
+  fixedMonthlyExpenses: number;
+  variableMonthlyExpenses: number;
+  debtMonthlyPayments: number;
+  availableMonthlyMargin: number;
+  emergencyFund: number;
+  monthsCovered: number;
+  savingRate: number;
+  debtPressurePercent: number;
+  state: "fragil" | "ajustado" | "estable" | "fuerte";
+  calmPointDistance: number;
+  changeJobCapacity: "baja" | "limitada" | "moderada" | "alta";
+};
+
 const debtLoadCases: DebtLoadCase[] = [
   {
     name: "Intencion de deuda no cambia dashboard",
@@ -1026,8 +1047,95 @@ for (const testCase of weeklyExecutionCases) {
   runWeeklyExecutionCase(testCase);
 }
 
+const financialMarginCases: FinancialMarginCase[] = [
+  {
+    name: "Margen fuerte separa gastos fijos, variables, deuda y colchon",
+    transactions: [
+      marginTx("ingreso", 5000, "2026-06-02", { category: "salario" }),
+      marginTx("gasto", 350, "2026-06-05", { category: "comida" }),
+      marginTx("gasto", 250, "2026-06-06", { category: "salida" }),
+      marginTx("ahorro", 12000, "2026-03-10", { category: "colchon" }),
+      marginTx("deuda", 2400, "2026-05-10", {
+        debt: {
+          kind: "compra_cuotas",
+          installmentAmount: 200,
+          monthlyMarginImpact: 200,
+          annualCost: 2400,
+          fireImpact: freedomNumber(200),
+          totalCost: 2400,
+          totalInterest: 0,
+          use: "consumo",
+          risk: "medio",
+          signals: [],
+          missingFields: [],
+        },
+      }),
+      marginTx("gasto", 900, "2026-06-12", { intent: "intencion" }),
+    ],
+    fixedExpenses: [
+      fixedMarginExpense("Alquiler", "vivienda", 1400),
+      fixedMarginExpense("Seguro medico", "salud", 300),
+      fixedMarginExpense("Netflix", "suscripciones", 20),
+      fixedMarginExpense("Gimnasio pausado", "otros", 50, false),
+    ],
+    monthlyIncome: 5000,
+    fixedMonthlyExpenses: 1720,
+    variableMonthlyExpenses: 600,
+    debtMonthlyPayments: 200,
+    availableMonthlyMargin: 2480,
+    emergencyFund: 12000,
+    monthsCovered: 4.76,
+    savingRate: 49.6,
+    debtPressurePercent: 4,
+    state: "estable",
+    calmPointDistance: 3120,
+    changeJobCapacity: "moderada",
+  },
+  {
+    name: "Margen fragil ignora intenciones y expone dependencia del sueldo",
+    transactions: [
+      marginTx("ingreso", 2200, "2026-06-02"),
+      marginTx("gasto", 500, "2026-06-08", { category: "comida" }),
+      marginTx("ahorro", 400, "2026-04-01", { category: "colchon" }),
+      marginTx("deuda", 3000, "2026-05-10", {
+        debt: {
+          kind: "prestamo",
+          installmentAmount: 650,
+          monthlyMarginImpact: 650,
+          annualCost: 7800,
+          fireImpact: freedomNumber(650),
+          totalCost: 7800,
+          totalInterest: 4800,
+          use: "consumo",
+          risk: "alto",
+          signals: [],
+          missingFields: [],
+        },
+      }),
+      marginTx("gasto", 900, "2026-06-12", { intent: "pensado" }),
+    ],
+    fixedExpenses: [fixedMarginExpense("Alquiler", "vivienda", 1250)],
+    monthlyIncome: 2200,
+    fixedMonthlyExpenses: 1250,
+    variableMonthlyExpenses: 500,
+    debtMonthlyPayments: 650,
+    availableMonthlyMargin: -200,
+    emergencyFund: 400,
+    monthsCovered: 0.17,
+    savingRate: -9.09,
+    debtPressurePercent: 29.55,
+    state: "fragil",
+    calmPointDistance: 14000,
+    changeJobCapacity: "baja",
+  },
+];
+
+for (const testCase of financialMarginCases) {
+  runFinancialMarginCase(testCase);
+}
+
 console.log(
-  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}`,
+  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}`,
 );
 
 function tx(
@@ -1392,6 +1500,38 @@ function weeklyTx(
   };
 }
 
+function marginTx(
+  type: string,
+  amount: number,
+  date: string,
+  patch: Partial<FinancialMarginTransaction> = {},
+): FinancialMarginTransaction {
+  return {
+    type,
+    amount,
+    date,
+    category: "sin categoria",
+    intent: "real",
+    ignored: false,
+    ...patch,
+  };
+}
+
+function fixedMarginExpense(
+  name: string,
+  category: FinancialMarginFixedExpense["category"],
+  monthlyAmount: number,
+  active = true,
+): FinancialMarginFixedExpense {
+  return {
+    name,
+    category,
+    monthlyAmount,
+    currency: "USD",
+    active,
+  };
+}
+
 function runWeeklyExecutionCase(expected: WeeklyExecutionCase) {
   const analysis = analyzeWeeklyExecution({
     transactions: expected.transactions,
@@ -1434,4 +1574,60 @@ function runWeeklyExecutionCase(expected: WeeklyExecutionCase) {
       "overdueActions.length",
     );
   }
+}
+
+function runFinancialMarginCase(expected: FinancialMarginCase) {
+  const analysis = analyzeFinancialMargin({
+    transactions: expected.transactions,
+    fixedExpenses: expected.fixedExpenses,
+    today: new Date("2026-06-18T12:00:00Z"),
+  });
+
+  assertEqual(analysis.monthlyIncome, expected.monthlyIncome, expected.name, "monthlyIncome");
+  assertEqual(
+    analysis.fixedMonthlyExpenses,
+    expected.fixedMonthlyExpenses,
+    expected.name,
+    "fixedMonthlyExpenses",
+  );
+  assertEqual(
+    analysis.variableMonthlyExpenses,
+    expected.variableMonthlyExpenses,
+    expected.name,
+    "variableMonthlyExpenses",
+  );
+  assertEqual(
+    analysis.debtMonthlyPayments,
+    expected.debtMonthlyPayments,
+    expected.name,
+    "debtMonthlyPayments",
+  );
+  assertEqual(
+    analysis.availableMonthlyMargin,
+    expected.availableMonthlyMargin,
+    expected.name,
+    "availableMonthlyMargin",
+  );
+  assertEqual(analysis.emergencyFund, expected.emergencyFund, expected.name, "emergencyFund");
+  assertAlmostEqual(analysis.monthsCovered, expected.monthsCovered, expected.name, "monthsCovered");
+  assertAlmostEqual(analysis.savingRate, expected.savingRate, expected.name, "savingRate");
+  assertAlmostEqual(
+    analysis.debtPressurePercent,
+    expected.debtPressurePercent,
+    expected.name,
+    "debtPressurePercent",
+  );
+  assertEqual(analysis.state, expected.state, expected.name, "state");
+  assertEqual(
+    analysis.calmPointDistance,
+    expected.calmPointDistance,
+    expected.name,
+    "calmPointDistance",
+  );
+  assertEqual(
+    analysis.changeJobCapacity,
+    expected.changeJobCapacity,
+    expected.name,
+    "changeJobCapacity",
+  );
 }
