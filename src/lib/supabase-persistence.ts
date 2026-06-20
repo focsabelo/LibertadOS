@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
+  DEFAULT_FREEDOM_INPUTS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   normalizeBotOpera24hsInvestment,
   normalizeTargetPortfolioSettings,
@@ -46,23 +47,13 @@ export type DashboardSettingsPayload = {
   onboarding_seen: boolean;
 };
 
-const DEFAULT_INPUTS: FreedomInputs = {
-  netWorth: 85000,
-  investedCapital: 62000,
-  desiredMonthlySpend: 3000,
-  monthlyContribution: 1800,
-  expectedAnnualReturn: 7,
-};
-
-const defaultRoadmapContribution = DEFAULT_INPUTS.monthlyContribution + 500;
-
 export function createDefaultDashboardData(): DashboardData {
   return {
-    inputs: DEFAULT_INPUTS,
+    inputs: DEFAULT_FREEDOM_INPUTS,
     portfolioSettings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
     botOperaInvestment: DEFAULT_BOT_OPERA24HS_INVESTMENT,
     weeklyExecutionReviews: [],
-    roadmapSimulatedContribution: defaultRoadmapContribution,
+    roadmapSimulatedContribution: 0,
     onboardingSeen: false,
   };
 }
@@ -216,7 +207,7 @@ export async function saveDashboardSettings(
   );
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -237,7 +228,7 @@ export async function saveTargetPortfolio(
   );
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 
   await saveInvestmentRule(supabase, userId, "investment_policy", normalized.policy);
@@ -265,7 +256,7 @@ export async function saveBotOpera24hsInvestment(
   );
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 
   await saveInvestmentRule(supabase, userId, "bot_opera24hs_reinvestment", {
@@ -284,7 +275,7 @@ export async function saveWeeklyExecutionReview(
   );
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -304,7 +295,7 @@ export async function saveInvestmentRule(
   );
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -365,7 +356,7 @@ export async function loadConfirmedTransactions(
     .order("confirmed_at", { ascending: false });
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 
   return (data ?? []).map(transactionFromRow);
@@ -385,7 +376,7 @@ export async function loadFixedMonthlyExpenses(
     .order("name", { ascending: true });
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 
   return (data ?? []).map(fixedMonthlyExpenseFromRow);
@@ -408,7 +399,7 @@ export async function createFixedMonthlyExpense(
     .single();
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 
   return fixedMonthlyExpenseFromRow(data as JsonRecord);
@@ -430,7 +421,7 @@ export async function updateFixedMonthlyExpense(
     .single();
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 
   return fixedMonthlyExpenseFromRow(data as JsonRecord);
@@ -448,7 +439,7 @@ export async function deleteFixedMonthlyExpense(
     .eq("id", expenseId);
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -471,7 +462,7 @@ export async function upsertFinancialNote(
   });
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -487,7 +478,7 @@ export async function deleteFinancialNote(
     .eq("id", noteId);
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -554,7 +545,7 @@ export async function upsertConfirmedTransactions(
     .upsert(transactions.map((transaction) => transactionToRow(userId, transaction)));
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -570,7 +561,7 @@ export async function deleteTransactionsForNote(
     .eq("note_id", noteId);
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
@@ -673,12 +664,88 @@ function throwFirstError(...errors: unknown[]) {
   const error = errors.find(Boolean);
 
   if (error) {
-    throw error;
+    throw normalizeSupabasePersistenceError(error);
   }
 }
 
 function actionError(message: string, error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error);
+  const detail = normalizeSupabasePersistenceError(error).message;
 
   return new Error(`${message} Detalle tecnico: ${detail}`);
+}
+
+export function normalizeSupabasePersistenceError(error: unknown) {
+  const detail = supabaseErrorText(error);
+  const lowerDetail = detail.toLowerCase();
+  const code = supabaseErrorCode(error);
+  const missingTable =
+    code === "42P01" ||
+    code === "PGRST205" ||
+    lowerDetail.includes("could not find table") ||
+    lowerDetail.includes("could not find the table") ||
+    (lowerDetail.includes("relation") && lowerDetail.includes("does not exist"));
+  const missingFunction =
+    code === "42883" ||
+    code === "PGRST202" ||
+    lowerDetail.includes("could not find the function") ||
+    (lowerDetail.includes("function") && lowerDetail.includes("does not exist"));
+
+  if (missingTable) {
+    const table = extractMissingObjectName(detail, "table");
+
+    return new Error(
+      `Falta aplicar una migracion de Supabase. La tabla${
+        table ? ` ${table}` : ""
+      } no existe en el proyecto. Ejecuta las migraciones de supabase/migrations en el SQL Editor y vuelve a cargar la app.`,
+    );
+  }
+
+  if (missingFunction) {
+    const functionName = extractMissingObjectName(detail, "function");
+
+    return new Error(
+      `Falta aplicar una migracion de Supabase. La funcion RPC${
+        functionName ? ` ${functionName}` : ""
+      } no existe. Ejecuta 20260620160000_atomic_financial_note_confirmation.sql en el SQL Editor y vuelve a intentar.`,
+    );
+  }
+
+  return error instanceof Error ? error : new Error(detail);
+}
+
+function supabaseErrorText(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    return [record.message, record.details, record.hint]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ");
+  }
+
+  return String(error);
+}
+
+function supabaseErrorCode(error: unknown) {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : "";
+  }
+
+  return "";
+}
+
+function extractMissingObjectName(detail: string, kind: "table" | "function") {
+  const quotedMatch =
+    detail.match(/'(public\.[^']+|[^']+)'/) ?? detail.match(/"([^"]+)"/);
+
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1];
+  }
+
+  const kindMatch = detail.match(new RegExp(`${kind}\\s+([\\w.]+)`, "i"));
+
+  return kindMatch?.[1] ?? "";
 }

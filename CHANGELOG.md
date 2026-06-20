@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v2.0.2 - Fase 1B de estabilidad
+
+* Cuentas nuevas ahora arrancan sin patrimonio, capital invertido, gasto mensual ni aporte mensual de ejemplo como datos activos.
+* Dashboard con estado vacio guiado para cargar datos base o confirmar la primera nota.
+* Errores de persistencia Supabase mas accionables cuando faltan tablas o funciones RPC.
+* README actualizado con setup Supabase, variables de entorno, migraciones y flujo de despliegue.
+
 ## v2.0.1 - Estabilidad de confirmacion de notas
 
 * Confirmacion de notas movida a una operacion Supabase atomica: nota y transacciones se guardan juntas o no se confirma nada.

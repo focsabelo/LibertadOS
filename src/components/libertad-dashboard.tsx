@@ -35,6 +35,7 @@ import {
   completionPercent,
   coreExpenseShare,
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
+  DEFAULT_FREEDOM_INPUTS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   estimateYearsToTarget,
   fireReductionScenarios,
@@ -69,14 +70,6 @@ import {
   saveWeeklyExecutionReview,
   updateFixedMonthlyExpense,
 } from "@/lib/supabase-persistence";
-
-const DEFAULT_INPUTS: FreedomInputs = {
-  netWorth: 85000,
-  investedCapital: 62000,
-  desiredMonthlySpend: 3000,
-  monthlyContribution: 1800,
-  expectedAnnualReturn: 7,
-};
 
 const currencyFormatter = new Intl.NumberFormat("es-UY", {
   style: "currency",
@@ -120,35 +113,59 @@ type Field = {
   prefix?: string;
   suffix?: string;
   step?: string;
+  placeholder?: string;
+  help?: string;
 };
 
 const fields: Field[] = [
-  { id: "netWorth", label: "Patrimonio actual", prefix: "USD", step: "500" },
+  {
+    id: "netWorth",
+    label: "Patrimonio actual",
+    prefix: "USD",
+    step: "500",
+    placeholder: "Ej: 85000",
+    help: "Total real que queres usar como punto de partida.",
+  },
   {
     id: "investedCapital",
     label: "Capital invertido",
     prefix: "USD",
     step: "500",
+    placeholder: "Ej: 62000",
+    help: "Solo capital ya invertido; si todavia no lo cargaste, dejalo vacio.",
   },
   {
     id: "desiredMonthlySpend",
     label: "Gasto mensual deseado",
     prefix: "USD",
     step: "100",
+    placeholder: "Ej: 3000",
+    help: "Base para calcular el numero x25.",
   },
   {
     id: "monthlyContribution",
     label: "Aporte mensual",
     prefix: "USD",
     step: "100",
+    placeholder: "Ej: 1800",
+    help: "Aporte mensual esperado para estimar tiempos.",
   },
   {
     id: "expectedAnnualReturn",
     label: "Retorno anual esperado",
     suffix: "%",
     step: "0.1",
+    placeholder: "Ej: 7",
+    help: "Supuesto de retorno para proyecciones; no es patrimonio real.",
   },
 ];
+
+const baseFinancialInputKeys = [
+  "netWorth",
+  "investedCapital",
+  "desiredMonthlySpend",
+  "monthlyContribution",
+] as const;
 
 type AppSection =
   | "dashboard"
@@ -227,7 +244,7 @@ const inputShellClass =
   "libertad-field flex h-12 items-center rounded-md bg-white px-3";
 
 const inputClass =
-  "h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-stone-950 outline-none libertad-number";
+  "h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-stone-950 outline-none placeholder:text-stone-500 libertad-number";
 
 function nextBotOperaMonth(month?: string) {
   if (!month) {
@@ -248,7 +265,7 @@ function nextBotOperaMonth(month?: string) {
 export function LibertadDashboard() {
   const supabase = useMemo(() => getSupabaseClient(), []);
   const supabaseConfigError = useMemo(() => getSupabaseConfigError(), []);
-  const [inputs, setInputs] = useState<FreedomInputs>(DEFAULT_INPUTS);
+  const [inputs, setInputs] = useState<FreedomInputs>(DEFAULT_FREEDOM_INPUTS);
   const [portfolioSettings, setPortfolioSettings] =
     useState<TargetPortfolioSettings>(DEFAULT_TARGET_PORTFOLIO_SETTINGS);
   const [botOperaInvestment, setBotOperaInvestment] =
@@ -257,7 +274,7 @@ export function LibertadDashboard() {
     WeeklyExecutionReview[]
   >([]);
   const [roadmapSimulatedContribution, setRoadmapSimulatedContribution] =
-    useState(DEFAULT_INPUTS.monthlyContribution + 500);
+    useState(0);
   const [confirmedTransactions, setConfirmedTransactions] = useState<
     ConfirmedFinancialTransaction[]
   >([]);
@@ -625,6 +642,15 @@ export function LibertadDashboard() {
   const yearsLabel = Number.isFinite(metrics.years)
     ? `${numberFormatter.format(metrics.years)} anos`
     : "Sin fecha estimada";
+  const hasBaseFinancialInputs = baseFinancialInputKeys.some(
+    (key) => inputs[key] > 0,
+  );
+  const hasFreedomTarget = effectiveInputs.desiredMonthlySpend > 0;
+  const hasProgressBasis =
+    effectiveInputs.netWorth > 0 || effectiveInputs.investedCapital > 0;
+  const hasProgressCalculation = hasFreedomTarget && hasProgressBasis;
+  const isGuidedEmptyState =
+    !hasBaseFinancialInputs && confirmedTransactions.length === 0;
 
   function updateInput(key: keyof FreedomInputs, value: string) {
     const parsedValue = Number(value);
@@ -971,7 +997,9 @@ export function LibertadDashboard() {
           ? "Ajustar objetivos de cartera"
           : needsWeeklyExecution
             ? "Cerrar sistema semanal"
-            : confirmedTransactions.length === 0
+            : isGuidedEmptyState
+              ? "Cargar datos base"
+              : confirmedTransactions.length === 0
               ? "Capturar y confirmar el primer movimiento"
               : "Mantener captura semanal";
   const weeklyAction = needsDebtAttention
@@ -1117,6 +1145,42 @@ export function LibertadDashboard() {
 
           {activeSection === "dashboard" ? (
             <>
+              {isGuidedEmptyState ? (
+                <section className="libertad-surface rounded-lg p-5 sm:p-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="max-w-3xl">
+                      <p className="text-sm font-semibold text-emerald-800">
+                        Cuenta nueva
+                      </p>
+                      <h2 className="mt-1 text-2xl font-semibold text-stone-950 text-balance">
+                        Carga tus datos base o confirma una nota para activar el tablero.
+                      </h2>
+                      <p className="mt-2 text-sm leading-6 text-stone-600">
+                        Libertad OS no usa ejemplos como datos reales. Los
+                        numeros aparecen cuando cargues patrimonio, capital,
+                        gasto mensual y aporte, o cuando confirmes movimientos.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                      <button
+                        className="inline-flex min-h-11 items-center justify-center rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition-colors hover:bg-stone-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                        type="button"
+                        onClick={() => selectSection("configuracion")}
+                      >
+                        Cargar datos base
+                      </button>
+                      <button
+                        className="inline-flex min-h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                        type="button"
+                        onClick={() => selectSection("notas")}
+                      >
+                        Capturar una nota
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
               <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="libertad-surface rounded-lg p-5 sm:p-6">
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -1125,7 +1189,9 @@ export function LibertadDashboard() {
                         Numero de libertad financiera
                       </p>
                       <p className="libertad-number mt-2 break-words text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
-                        {currencyFormatter.format(metrics.target)}
+                        {hasFreedomTarget
+                          ? currencyFormatter.format(metrics.target)
+                          : "Sin gasto mensual"}
                       </p>
                     </div>
                     <div className="shrink-0 rounded-md border border-stone-200 bg-stone-950 px-4 py-3 text-left text-white">
@@ -1133,7 +1199,9 @@ export function LibertadDashboard() {
                         Falta para la meta
                       </p>
                       <p className="libertad-number mt-1 text-2xl font-semibold text-white">
-                        {currencyFormatter.format(metrics.remaining)}
+                        {hasProgressCalculation
+                          ? currencyFormatter.format(metrics.remaining)
+                          : "Sin calcular"}
                       </p>
                     </div>
                   </div>
@@ -1142,29 +1210,37 @@ export function LibertadDashboard() {
                     <div className="flex items-center justify-between gap-4 text-sm font-medium">
                       <span className="text-stone-600">Progreso total</span>
                       <span className="libertad-number text-lg font-semibold text-stone-950">
-                        {percentFormatter.format(metrics.completed)}%
+                        {hasProgressCalculation
+                          ? `${percentFormatter.format(metrics.completed)}%`
+                          : "Sin calcular"}
                       </span>
                     </div>
                     <div
-                      aria-label={`Progreso total ${percentFormatter.format(
-                        metrics.completed,
-                      )}%`}
+                      aria-label={
+                        hasProgressCalculation
+                          ? `Progreso total ${percentFormatter.format(
+                              metrics.completed,
+                            )}%`
+                          : "Progreso total sin calcular"
+                      }
                       aria-valuemax={100}
                       aria-valuemin={0}
-                      aria-valuenow={Math.min(
-                        100,
-                        Math.max(0, metrics.completed),
-                      )}
+                      aria-valuenow={
+                        hasProgressCalculation
+                          ? Math.min(100, Math.max(0, metrics.completed))
+                          : 0
+                      }
                       className="libertad-meter mt-4 h-5"
                       role="progressbar"
                     >
                       <div
                         className="h-full rounded-full bg-emerald-700"
                         style={{
-                          width: `${Math.min(
-                            100,
-                            Math.max(0, metrics.completed),
-                          )}%`,
+                          width: `${
+                            hasProgressCalculation
+                              ? Math.min(100, Math.max(0, metrics.completed))
+                              : 0
+                          }%`,
                         }}
                       />
                     </div>
@@ -1178,16 +1254,24 @@ export function LibertadDashboard() {
                   <div className="libertad-card-grid mt-7 grid gap-3">
                     <MetricCard
                       label="Gasto anual"
-                      value={currencyFormatter.format(metrics.annual)}
+                      value={
+                        hasFreedomTarget
+                          ? currencyFormatter.format(metrics.annual)
+                          : "Sin cargar"
+                      }
                     />
                     <MetricCard
                       label="Tiempo estimado"
-                      value={yearsLabel}
+                      value={hasProgressCalculation ? yearsLabel : "Sin calcular"}
                       tone="blue"
                     />
                     <MetricCard
                       label="Patrimonio invertido"
-                      value={`${percentFormatter.format(metrics.investRatio)}%`}
+                      value={
+                        hasProgressBasis
+                          ? `${percentFormatter.format(metrics.investRatio)}%`
+                          : "Sin cargar"
+                      }
                       tone="green"
                     />
                   </div>
@@ -1198,19 +1282,22 @@ export function LibertadDashboard() {
                     Lectura del mes
                   </p>
                   <p className="mt-4 text-3xl font-semibold text-balance">
-                    {metrics.completed >= 100
+                    {isGuidedEmptyState
+                      ? "Empeza con datos reales"
+                      : metrics.completed >= 100
                       ? "Meta alcanzada"
                       : metrics.completed >= 50
                         ? "La bola de nieve ya pesa"
                         : "La maquina esta tomando forma"}
                   </p>
                   <p className="mt-4 text-sm leading-6 text-stone-300">
-                    Con un aporte de{" "}
-                    {currencyFormatter.format(inputs.monthlyContribution)} y un
-                    retorno anual esperado de{" "}
-                    {percentFormatter.format(inputs.expectedAnnualReturn)}%, el
-                    tablero estima {yearsLabel.toLowerCase()} para llegar al
-                    numero x25.
+                    {isGuidedEmptyState
+                      ? "Carga tus supuestos base en Config o confirma una nota. Hasta entonces, el dashboard evita mostrar ejemplos como si fueran datos financieros tuyos."
+                      : `Con un aporte de ${currencyFormatter.format(
+                          inputs.monthlyContribution,
+                        )} y un retorno anual esperado de ${percentFormatter.format(
+                          inputs.expectedAnnualReturn,
+                        )}%, el tablero estima ${yearsLabel.toLowerCase()} para llegar al numero x25.`}
                   </p>
                   <div className="mt-5 grid gap-2">
                     <SignalRow
@@ -1231,9 +1318,13 @@ export function LibertadDashboard() {
                     />
                     <SignalRow
                       label="Margen mensual"
-                      value={currencyFormatter.format(
-                        financialMargin.availableMonthlyMargin,
-                      )}
+                      value={
+                        isGuidedEmptyState
+                          ? "Sin movimientos"
+                          : currencyFormatter.format(
+                              financialMargin.availableMonthlyMargin,
+                            )
+                      }
                     />
                   </div>
                 </aside>
@@ -1262,32 +1353,50 @@ export function LibertadDashboard() {
                 <div className="libertad-card-grid mt-5 grid gap-3">
                   <MetricCard
                     label="Patrimonio actual"
-                    value={currencyFormatter.format(effectiveInputs.netWorth)}
+                    value={
+                      effectiveInputs.netWorth > 0
+                        ? currencyFormatter.format(effectiveInputs.netWorth)
+                        : "Sin cargar"
+                    }
                     tone="green"
                   />
                   <MetricCard
                     label="Capital invertido"
-                    value={currencyFormatter.format(
-                      effectiveInputs.investedCapital,
-                    )}
+                    value={
+                      effectiveInputs.investedCapital > 0
+                        ? currencyFormatter.format(effectiveInputs.investedCapital)
+                        : "Sin cargar"
+                    }
                     tone="blue"
                   />
                   <MetricCard
                     label="Gasto mensual deseado"
-                    value={currencyFormatter.format(
-                      effectiveInputs.desiredMonthlySpend,
-                    )}
+                    value={
+                      effectiveInputs.desiredMonthlySpend > 0
+                        ? currencyFormatter.format(
+                            effectiveInputs.desiredMonthlySpend,
+                          )
+                        : "Sin cargar"
+                    }
                   />
                   <MetricCard
                     label="Aporte mensual"
-                    value={currencyFormatter.format(inputs.monthlyContribution)}
+                    value={
+                      inputs.monthlyContribution > 0
+                        ? currencyFormatter.format(inputs.monthlyContribution)
+                        : "Sin cargar"
+                    }
                     tone="amber"
                   />
                   <MetricCard
                     label="Margen mensual"
-                    value={currencyFormatter.format(
-                      financialMargin.availableMonthlyMargin,
-                    )}
+                    value={
+                      isGuidedEmptyState
+                        ? "Sin movimientos"
+                        : currencyFormatter.format(
+                            financialMargin.availableMonthlyMargin,
+                          )
+                    }
                     tone={
                       financialMargin.state === "fragil"
                         ? "red"
@@ -1303,9 +1412,13 @@ export function LibertadDashboard() {
                     Regla x25 activa
                   </p>
                   <p className="mt-2 text-sm leading-6 text-stone-700">
-                    Cada {currencyFormatter.format(100)} menos de gasto mensual
-                    baja tu numero de libertad en{" "}
-                    {currencyFormatter.format(30000)}.
+                    {hasFreedomTarget
+                      ? `Cada ${currencyFormatter.format(
+                          100,
+                        )} menos de gasto mensual baja tu numero de libertad en ${currencyFormatter.format(
+                          30000,
+                        )}.`
+                      : "Cuando cargues tu gasto mensual, esta regla muestra el impacto x25 sin usar datos de ejemplo."}
                   </p>
                 </div>
               </section>
@@ -1408,9 +1521,16 @@ export function LibertadDashboard() {
                           inputMode="decimal"
                           min="0"
                           name={field.id}
+                          placeholder={field.placeholder}
                           step={field.step}
                           type="number"
-                          value={inputs[field.id]}
+                          value={
+                            baseFinancialInputKeys.includes(
+                              field.id as (typeof baseFinancialInputKeys)[number],
+                            ) && inputs[field.id] === 0
+                              ? ""
+                              : inputs[field.id]
+                          }
                           onChange={(event) =>
                             updateInput(field.id, event.target.value)
                           }
@@ -1421,6 +1541,11 @@ export function LibertadDashboard() {
                           </span>
                         ) : null}
                       </div>
+                      {field.help ? (
+                        <span className="text-xs leading-5 text-stone-500">
+                          {field.help}
+                        </span>
+                      ) : null}
                     </label>
                   ))}
                 </div>

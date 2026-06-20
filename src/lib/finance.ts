@@ -6,6 +6,14 @@ export type FreedomInputs = {
   expectedAnnualReturn: number;
 };
 
+export const DEFAULT_FREEDOM_INPUTS: FreedomInputs = {
+  netWorth: 0,
+  investedCapital: 0,
+  desiredMonthlySpend: 0,
+  monthlyContribution: 0,
+  expectedAnnualReturn: 7,
+};
+
 export const CORE_EXPENSE_CATEGORIES = ["vivienda", "transporte", "comida"] as const;
 export const FIRE_REDUCTION_LEVELS = [10, 50, 100, 250] as const;
 export const DEFAULT_EMERGENCY_FUND_RATE = 0.05;

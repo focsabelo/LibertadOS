@@ -9,6 +9,7 @@ import {
   createDashboardSettingsPayload,
   createDefaultDashboardData,
   confirmFinancialNoteWithTransactions,
+  normalizeSupabasePersistenceError,
   normalizeDashboardData,
   saveFinancialNoteDraft,
   weeklyExecutionReviewFromRow,
@@ -70,6 +71,22 @@ assertEqual(
   DEFAULT_BOT_OPERA24HS_INVESTMENT.botNumber,
   "default bot settings are preserved",
 );
+assertEqual(defaults.inputs.netWorth, 0, "default net worth starts empty");
+assertEqual(
+  defaults.inputs.investedCapital,
+  0,
+  "default invested capital starts empty",
+);
+assertEqual(
+  defaults.inputs.desiredMonthlySpend,
+  0,
+  "default monthly spend starts empty",
+);
+assertEqual(
+  defaults.inputs.monthlyContribution,
+  0,
+  "default monthly contribution starts empty",
+);
 
 const normalized = normalizeDashboardData({
   settings: {
@@ -104,8 +121,33 @@ assertEqual(
   "partial bot rows normalize monthly results",
 );
 assert(
-  normalized.roadmapSimulatedContribution > 0,
-  "missing roadmap simulation falls back to a positive default",
+  normalized.roadmapSimulatedContribution === 0,
+  "missing roadmap simulation starts empty",
+);
+
+const missingTableError = normalizeSupabasePersistenceError({
+  code: "PGRST205",
+  message:
+    "Could not find the table 'public.dashboard_settings' in the schema cache",
+});
+assert(
+  missingTableError.message.includes("Falta aplicar una migracion"),
+  "missing table error explains migration action",
+);
+assert(
+  missingTableError.message.includes("public.dashboard_settings"),
+  "missing table error names table when available",
+);
+
+const missingFunctionError = normalizeSupabasePersistenceError({
+  code: "PGRST202",
+  message: "Could not find the function public.confirm_financial_note",
+});
+assert(
+  missingFunctionError.message.includes(
+    "20260620160000_atomic_financial_note_confirmation.sql",
+  ),
+  "missing RPC error points to the atomic confirmation migration",
 );
 
 const weeklyReview: WeeklyExecutionReview = {
