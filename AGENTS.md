@@ -1,7 +1,7 @@
 <!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Next.js Guidance
 
-This version has breaking changes. APIs, conventions, and file structure may differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This project uses a newer Next.js version with breaking changes. Read the relevant guide in `node_modules/next/dist/docs/` when a change touches Next APIs, routing, config, server/client boundaries, environment variables, or build behavior. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
 # Libertad OS Agent Rules
@@ -19,7 +19,8 @@ Use `PRODUCT.md` as the product source of truth. Do not duplicate or contradict 
 - Do not rebuild the app from scratch without explicit permission.
 - Do not replace the existing Next.js/TypeScript/Tailwind stack unless explicitly requested.
 - Do not add dependencies unless the benefit is clear and the existing stack cannot reasonably solve the task.
-- Do not erase existing local-storage keys or user data as part of routine UI work.
+- Do not delete or overwrite user data without an explicit, safe migration.
+- If user data still exists in localStorage, preserve it or migrate it in a controlled way before replacing persistence.
 - Do not change financial formulas casually. Any change to financial logic must be deliberate and easy to review.
 
 ## Commands
@@ -29,6 +30,7 @@ Run these from the project root:
 ```bash
 npm run lint
 npm run build
+npm run test:parser
 ```
 
 For local development:
@@ -38,6 +40,25 @@ npm run dev
 ```
 
 The app normally runs at `http://127.0.0.1:3000` or `http://localhost:3000`.
+
+## Changelog
+
+- For any user-facing change, feature, bugfix, behavior change, financial logic change, or meaningful design update, update `CHANGELOG.md` in the same task.
+- Do not add changelog entries for purely internal refactors, formatting-only edits, test-only changes, or minor agent-instruction edits unless the user explicitly asks for it.
+- Keep changelog entries concise, concrete, and easy to review.
+
+## Supabase Rules
+
+- Use `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for browser-safe Supabase configuration.
+- Do not expose `service_role`, secret keys, or private credentials in frontend code.
+- Do not commit `.env.local`.
+- Keep `.env.example` free of real values.
+- Every private user table must have RLS enabled.
+- Policies must protect user data with `auth.uid() = user_id`.
+- Schema changes must live in `supabase/migrations`.
+- Do not bypass RLS from client-side code.
+- Do not allow access to private data when there is no session.
+- Every user-created record must be associated with the authenticated user.
 
 ## Financial Logic Rules
 
@@ -83,21 +104,21 @@ Core financial utilities live in `src/lib/finance.ts` and note parsing logic liv
 
 ## Frontend Skills
 
-Para cualquier cambio relacionado con frontend, UI, UX, componentes visuales, layout, responsive design, accesibilidad, dashboard, modales, formularios, graficos, visualizaciones o estilos, primero leer y aplicar las skills de frontend del proyecto:
+For significant UI, UX, layout, responsive, accessibility, dashboard, modal, form, chart, visualization, or styling changes, consult the relevant project frontend skills:
 
-- `frontend-design` (`.agents/skills/frontend/SKILL.md`) para diseno general, pantallas, componentes, modales y dashboard.
-- `d3-viz` (`.agents/skills/frontend2/SKILL.md`) cuando haya graficos, dashboards, visualizaciones o datos.
-- `web-design-guidelines` (`.agents/skills/frontend3/SKILL.md`) para consistencia visual, jerarquia, spacing, accesibilidad y diseno responsive.
+- Use `frontend-design` (`.agents/skills/frontend/SKILL.md`) and `web-design-guidelines` (`.agents/skills/frontend3/SKILL.md`) for dashboard, layout, screens, components, accessibility, and responsive behavior.
+- Use `d3-viz` (`.agents/skills/frontend2/SKILL.md`) for charts, visualizations, dashboard data graphics, or custom data displays.
+- Use Impeccable for meaningful visual polish, hierarchy, copy, empty states, responsive behavior, or accessibility work.
 
-No implementar cambios frontend sin consultar esas skills. Si la tarea incluye graficos o visualizaciones, usar especialmente `d3-viz`. Si la tarea incluye diseno general, pantallas, componentes, modales o dashboard, usar `frontend-design` y `web-design-guidelines`.
+For minimal copy edits, tiny style fixes, or narrowly scoped bug fixes, use judgment and do not run the full frontend-skill workflow unless the change meaningfully affects the user experience.
 
-No modificar logica de negocio salvo que sea necesario para conectar la UI. Mantener el estilo actual de Libertad OS: calmado, serio, premium, claro, sin estetica fintech generica, sin ruido visual y respetando la confirmacion manual sagrada.
+Do not modify business logic unless necessary to connect the UI. Maintain Libertad OS's calm, serious, premium, clear style, with no generic fintech noise and with manual confirmation treated as sacred.
 
 ## Impeccable
 
-Use Impeccable when changing UI, UX, layout, visual hierarchy, copy, empty states, responsive behavior, or accessibility.
+Use Impeccable for important visual, UX, layout, hierarchy, copy, empty-state, responsive, or accessibility changes. It is optional for microcopy edits and minor visual fixes.
 
-Required setup for design work:
+For substantial design work, run:
 
 ```bash
 node .agents/skills/impeccable/scripts/context.mjs
@@ -109,7 +130,7 @@ Then follow the relevant Impeccable reference for the task, usually:
 - `reference/polish.md` for final UI quality passes.
 - `reference/critique.md`, `layout.md`, `clarify.md`, `harden.md`, or `adapt.md` when the task fits.
 
-Before considering UI work done, run:
+Before considering substantial UI work done, run:
 
 ```bash
 node .agents/skills/impeccable/scripts/detect.mjs --json src/components/libertad-dashboard.tsx src/components/financial-notes-module.tsx src/app/globals.css
@@ -124,6 +145,7 @@ Treat detector output as evidence, not as the only quality bar. Inspect the app 
 - Financial formulas: `src/lib/finance.ts`.
 - Natural-language parser and note types: `src/lib/financial-notes.ts`.
 - Global CSS: `src/app/globals.css`.
+- Supabase schema changes: `supabase/migrations`.
 - Product intent: `PRODUCT.md`.
 
 Keep changes scoped. Improve the existing app; do not replace it.

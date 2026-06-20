@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CORE_EXPENSE_CATEGORIES,
   freedomNumber,
@@ -27,9 +28,14 @@ import {
   type FinancialType,
   type TransactionIntent,
 } from "@/lib/financial-notes";
+import {
+  deleteFinancialNote,
+  deleteTransactionsForNote,
+  loadNotesData,
+  upsertConfirmedTransactions,
+  upsertFinancialNote,
+} from "@/lib/supabase-persistence";
 
-const NOTES_STORAGE_KEY = "libertad-os-financial-notes-v2";
-const TRANSACTIONS_STORAGE_KEY = "libertad-os-transactions-v2";
 const CONFIRMED_NOTE_DELETE_WARNING =
   "Esta nota ya generó movimientos en el dashboard. Si la borrás, también se eliminarán esos movimientos.";
 
@@ -59,6 +65,8 @@ const detectedControlClass =
   "libertad-field h-11 w-full rounded-md px-2 text-sm text-stone-900";
 
 type FinancialNotesModuleProps = {
+  supabase: SupabaseClient;
+  userId: string;
   onTransactionsChange: (transactions: ConfirmedFinancialTransaction[]) => void;
 };
 
@@ -76,6 +84,8 @@ type DetectedSummary = {
 };
 
 export function FinancialNotesModule({
+  supabase,
+  userId,
   onTransactionsChange,
 }: FinancialNotesModuleProps) {
   const [notes, setNotes] = useState<FinancialNote[]>([]);
@@ -90,53 +100,57 @@ export function FinancialNotesModule({
     title: string;
   } | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [syncStatus, setSyncStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const storedNotes = window.localStorage.getItem(NOTES_STORAGE_KEY);
-    const storedTransactions = window.localStorage.getItem(
-      TRANSACTIONS_STORAGE_KEY,
-    );
-    const parsedNotes = storedNotes
-      ? (JSON.parse(storedNotes) as FinancialNote[]).map((note) =>
-          note.confirmedTransactionIds.length > 0
-            ? note
-            : { ...note, analysis: analyzeFinancialNote(note.body) },
-        )
-      : [createEmptyNote()];
-    const parsedTransactionsRaw = storedTransactions
-      ? (JSON.parse(storedTransactions) as ConfirmedFinancialTransaction[])
-      : [];
-    const noteIds = new Set(parsedNotes.map((note) => note.id));
-    const parsedTransactions = parsedTransactionsRaw.filter((transaction) =>
-      noteIds.has(transaction.noteId),
-    );
+    let isMounted = true;
 
     queueMicrotask(() => {
-      setNotes(parsedNotes);
-      setTransactions(parsedTransactions);
-      setSelectedNoteId(parsedNotes[0]?.id ?? "");
-      onTransactionsChange(parsedTransactions);
-      setHasLoaded(true);
+      if (isMounted) {
+        setHasLoaded(false);
+        setLoadError("");
+      }
     });
-  }, [onTransactionsChange]);
+
+    loadNotesData(supabase, userId)
+      .then(async (data) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const parsedNotes =
+          data.notes.length > 0 ? data.notes : [createEmptyNote()];
+
+        if (!isMounted) {
+          return;
+        }
+
+        setNotes(parsedNotes);
+        setTransactions(data.transactions);
+        setSelectedNoteId(parsedNotes[0]?.id ?? "");
+        onTransactionsChange(data.transactions);
+        setHasLoaded(true);
+      })
+      .catch((error: Error) => {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [onTransactionsChange, supabase, userId]);
 
   useEffect(() => {
     if (hasLoaded) {
-      window.localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
+      onTransactionsChange(transactions);
     }
-  }, [hasLoaded, notes]);
-
-  useEffect(() => {
-    if (!hasLoaded) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      TRANSACTIONS_STORAGE_KEY,
-      JSON.stringify(transactions),
-    );
-    onTransactionsChange(transactions);
   }, [hasLoaded, onTransactionsChange, transactions]);
 
   useEffect(() => {
@@ -191,39 +205,54 @@ export function FinancialNotesModule({
           selectedNote.confirmedTransactionIds.length > 0),
     );
 
+  function trackSave(action: Promise<unknown>) {
+    setSyncStatus("saving");
+    setSaveError("");
+    action
+      .then(() => setSyncStatus("saved"))
+      .catch((error: Error) => {
+        setSyncStatus("error");
+        setSaveError(error.message);
+      });
+  }
+
   function createNote(folder = selectedFolder) {
     const note = createEmptyNote(folder);
 
     setNotes((current) => [note, ...current]);
     setSelectedFolder(folder);
     setSelectedNoteId(note.id);
+    trackSave(upsertFinancialNote(supabase, userId, note));
     requestAnimationFrame(() => editorRef.current?.focus());
   }
 
   function updateSelectedNote(body: string) {
+    if (!selectedNote) {
+      return;
+    }
+
     const analysis = analyzeFinancialNote(body);
     const noteWasConfirmed =
       (selectedNote?.confirmedTransactionIds.length ?? 0) > 0;
+    const updatedNote: FinancialNote = {
+      ...selectedNote,
+      body,
+      title: deriveNoteTitle(body),
+      updatedAt: new Date().toISOString(),
+      analysis,
+      confirmedTransactionIds:
+        selectedNote.confirmedTransactionIds.length > 0
+          ? []
+          : selectedNote.confirmedTransactionIds,
+      pendingReconfirmation:
+        selectedNote.confirmedTransactionIds.length > 0
+          ? true
+          : selectedNote.pendingReconfirmation,
+    };
 
     setNotes((current) =>
       current.map((note) =>
-        note.id === selectedNoteId
-          ? {
-              ...note,
-              body,
-              title: deriveNoteTitle(body),
-              updatedAt: new Date().toISOString(),
-              analysis,
-              confirmedTransactionIds:
-                note.confirmedTransactionIds.length > 0
-                  ? []
-                  : note.confirmedTransactionIds,
-              pendingReconfirmation:
-                note.confirmedTransactionIds.length > 0
-                  ? true
-                  : note.pendingReconfirmation,
-            }
-          : note,
+        note.id === selectedNoteId ? updatedNote : note,
       ),
     );
 
@@ -231,25 +260,27 @@ export function FinancialNotesModule({
       setTransactions((current) =>
         current.filter((transaction) => transaction.noteId !== selectedNoteId),
       );
+      trackSave(deleteTransactionsForNote(supabase, userId, selectedNoteId));
     }
+
+    trackSave(upsertFinancialNote(supabase, userId, updatedNote));
   }
 
   function appendQuickCapture(text: string) {
     if (!selectedNote) {
       const note = createEmptyNote("Captura rapida");
       const analysis = analyzeFinancialNote(text);
+      const quickNote: FinancialNote = {
+        ...note,
+        body: text,
+        title: deriveNoteTitle(text),
+        analysis,
+        pendingReconfirmation: false,
+      };
 
-      setNotes((current) => [
-        {
-          ...note,
-          body: text,
-          title: deriveNoteTitle(text),
-              analysis,
-              pendingReconfirmation: false,
-            },
-        ...current,
-      ]);
+      setNotes((current) => [quickNote, ...current]);
       setSelectedNoteId(note.id);
+      trackSave(upsertFinancialNote(supabase, userId, quickNote));
       return;
     }
 
@@ -262,27 +293,30 @@ export function FinancialNotesModule({
     itemId: string,
     patch: Partial<DetectedFinancialItem>,
   ) {
+    if (!selectedNote) {
+      return;
+    }
+
     const noteWasConfirmed =
       (selectedNote?.confirmedTransactionIds.length ?? 0) > 0;
+    const updatedNote: FinancialNote = {
+      ...selectedNote,
+      analysis: selectedNote.analysis.map((item) =>
+        item.id === itemId
+          ? recalculateDetectedFinancialItem({ ...item, ...patch })
+          : item,
+      ),
+      confirmedTransactionIds: [],
+      pendingReconfirmation:
+        selectedNote.confirmedTransactionIds.length > 0
+          ? true
+          : selectedNote.pendingReconfirmation,
+      updatedAt: new Date().toISOString(),
+    };
 
     setNotes((current) =>
       current.map((note) =>
-        note.id === selectedNoteId
-          ? {
-              ...note,
-              analysis: note.analysis.map((item) =>
-                item.id === itemId
-                  ? recalculateDetectedFinancialItem({ ...item, ...patch })
-                  : item,
-              ),
-              confirmedTransactionIds: [],
-              pendingReconfirmation:
-                note.confirmedTransactionIds.length > 0
-                  ? true
-                  : note.pendingReconfirmation,
-              updatedAt: new Date().toISOString(),
-            }
-          : note,
+        note.id === selectedNoteId ? updatedNote : note,
       ),
     );
 
@@ -290,7 +324,10 @@ export function FinancialNotesModule({
       setTransactions((current) =>
         current.filter((transaction) => transaction.noteId !== selectedNoteId),
       );
+      trackSave(deleteTransactionsForNote(supabase, userId, selectedNoteId));
     }
+
+    trackSave(upsertFinancialNote(supabase, userId, updatedNote));
   }
 
   function confirmDetectedItems() {
@@ -312,19 +349,23 @@ export function FinancialNotesModule({
       noteTitle: selectedNote.title,
       confirmedAt: now,
     }));
+    const updatedNote: FinancialNote = {
+      ...selectedNote,
+      confirmedTransactionIds: newTransactions.map(
+        (transaction) => transaction.id,
+      ),
+      pendingReconfirmation: false,
+    };
 
     setTransactions((current) => [...newTransactions, ...current]);
     setNotes((current) =>
       current.map((note) =>
-        note.id === selectedNote.id
-          ? {
-              ...note,
-              confirmedTransactionIds: newTransactions.map(
-                (transaction) => transaction.id,
-              ),
-              pendingReconfirmation: false,
-            }
-          : note,
+        note.id === selectedNote.id ? updatedNote : note,
+      ),
+    );
+    trackSave(
+      upsertFinancialNote(supabase, userId, updatedNote).then(() =>
+        upsertConfirmedTransactions(supabase, userId, newTransactions),
       ),
     );
   }
@@ -341,6 +382,7 @@ export function FinancialNotesModule({
     setNotes(remainingNotes);
     setSelectedNoteId(nextNote?.id ?? "");
     setDeleteConfirmation(null);
+    trackSave(deleteFinancialNote(supabase, userId, selectedId));
   }
 
   function deleteSelectedNote() {
@@ -385,6 +427,20 @@ export function FinancialNotesModule({
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill label="Nada entra al dashboard sin confirmar" tone="amber" />
             <StatusPill label={`${transactions.length} confirmados`} />
+            <StatusPill
+              label={
+                loadError || saveError
+                  ? "Error de guardado"
+                  : syncStatus === "saving"
+                    ? "Guardando"
+                    : syncStatus === "saved"
+                      ? "Guardado"
+                      : hasLoaded
+                        ? "Sincronizado"
+                        : "Cargando"
+              }
+              tone={loadError || saveError ? "red" : "green"}
+            />
             <button
               className="h-11 rounded-md bg-white px-4 text-sm font-semibold text-stone-950 transition-colors hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
               type="button"
@@ -394,6 +450,14 @@ export function FinancialNotesModule({
             </button>
           </div>
         </div>
+        {loadError || saveError ? (
+          <p
+            aria-live="polite"
+            className="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-950"
+          >
+            {loadError || saveError}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid min-h-[720px] grid-cols-1 lg:grid-cols-[168px_248px_minmax(0,1fr)]">

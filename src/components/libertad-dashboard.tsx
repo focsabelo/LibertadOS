@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import {
   FinancialNotesModule,
   confirmedTransactionsSummary,
@@ -30,12 +38,17 @@ import {
   type TargetPortfolioSettings,
   type WealthRoadmapAnalysis,
 } from "@/lib/finance";
-
-const STORAGE_KEY = "libertad-os-dashboard-v1";
-const PORTFOLIO_STORAGE_KEY = "libertad-os-target-portfolio-v1";
-const BOT_OPERA24HS_STORAGE_KEY = "libertad-os-bot-opera24hs-v1";
-const ROADMAP_STORAGE_KEY = "libertad-os-roadmap-v1";
-const ONBOARDING_STORAGE_KEY = "libertad-os-onboarding-seen-v1";
+import {
+  getSupabaseClient,
+  getSupabaseConfigError,
+} from "@/lib/supabase-client";
+import {
+  loadConfirmedTransactions,
+  loadDashboardData,
+  saveBotOpera24hsInvestment,
+  saveDashboardSettings,
+  saveTargetPortfolio,
+} from "@/lib/supabase-persistence";
 
 const DEFAULT_INPUTS: FreedomInputs = {
   netWorth: 85000,
@@ -104,6 +117,8 @@ type AppSection =
   | "roadmap"
   | "macro"
   | "configuracion";
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const modules: {
   id: AppSection;
@@ -177,6 +192,8 @@ function nextBotOperaMonth(month?: string) {
 }
 
 export function LibertadDashboard() {
+  const supabase = useMemo(() => getSupabaseClient(), []);
+  const supabaseConfigError = useMemo(() => getSupabaseConfigError(), []);
   const [inputs, setInputs] = useState<FreedomInputs>(DEFAULT_INPUTS);
   const [portfolioSettings, setPortfolioSettings] =
     useState<TargetPortfolioSettings>(DEFAULT_TARGET_PORTFOLIO_SETTINGS);
@@ -188,9 +205,20 @@ export function LibertadDashboard() {
     ConfirmedFinancialTransaction[]
   >([]);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [authLoading, setAuthLoading] = useState(Boolean(supabase));
+  const [dataLoading, setDataLoading] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [onboardingSeen, setOnboardingSeen] = useState(false);
   const [showOnboardingCards, setShowOnboardingCards] = useState(false);
   const [activeSection, setActiveSection] =
     useState<AppSection>("dashboard");
+  const skipInitialDashboardSaveRef = useRef(true);
+  const skipInitialPortfolioSaveRef = useRef(true);
+  const skipInitialBotSaveRef = useRef(true);
+  const userId = session?.user.id ?? null;
 
   const handleTransactionsChange = useCallback(
     (transactions: ConfirmedFinancialTransaction[]) => {
@@ -200,57 +228,105 @@ export function LibertadDashboard() {
   );
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-
-      if (stored) {
-        setInputs({ ...DEFAULT_INPUTS, ...JSON.parse(stored) });
-      }
-
-      const storedPortfolio = window.localStorage.getItem(PORTFOLIO_STORAGE_KEY);
-
-      if (storedPortfolio) {
-        setPortfolioSettings(
-          normalizeTargetPortfolioSettings(JSON.parse(storedPortfolio)),
-        );
-      }
-
-      const storedBotOpera = window.localStorage.getItem(
-        BOT_OPERA24HS_STORAGE_KEY,
-      );
-
-      if (storedBotOpera) {
-        setBotOperaInvestment(
-          normalizeBotOpera24hsInvestment(JSON.parse(storedBotOpera)),
-        );
-      }
-
-      const storedRoadmap = window.localStorage.getItem(ROADMAP_STORAGE_KEY);
-
-      if (storedRoadmap) {
-        const parsedRoadmap = JSON.parse(storedRoadmap) as {
-          simulatedMonthlyContribution?: number;
-        };
-
-        if (Number.isFinite(parsedRoadmap.simulatedMonthlyContribution)) {
-          setRoadmapSimulatedContribution(
-            Math.max(0, parsedRoadmap.simulatedMonthlyContribution ?? 0),
-          );
-        }
-      }
-
-      const hasSeenOnboarding = window.localStorage.getItem(
-        ONBOARDING_STORAGE_KEY,
-      );
-
-      if (!hasSeenOnboarding) {
-        setShowOnboardingCards(true);
-        window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
-      }
-    } finally {
-      setHasLoaded(true);
+    if (!supabase) {
+      return;
     }
-  }, []);
+
+    let isMounted = true;
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!isMounted) {
+          return;
+        }
+
+        if (error) {
+          setLoadError(error.message);
+        }
+
+        setSession(data.session);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setHasLoaded(false);
+      setSaveStatus("idle");
+      setSaveError("");
+      skipInitialDashboardSaveRef.current = true;
+      skipInitialPortfolioSaveRef.current = true;
+      skipInitialBotSaveRef.current = true;
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !userId) {
+      queueMicrotask(() => {
+        setHasLoaded(false);
+        setConfirmedTransactions([]);
+      });
+      return;
+    }
+
+    let isMounted = true;
+
+    queueMicrotask(() => {
+      if (isMounted) {
+        setDataLoading(true);
+        setLoadError("");
+      }
+    });
+
+    Promise.all([
+      loadDashboardData(supabase, userId),
+      loadConfirmedTransactions(supabase, userId),
+    ])
+      .then(([dashboardData, transactions]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setInputs(dashboardData.inputs);
+        setPortfolioSettings(dashboardData.portfolioSettings);
+        setBotOperaInvestment(dashboardData.botOperaInvestment);
+        setRoadmapSimulatedContribution(
+          dashboardData.roadmapSimulatedContribution,
+        );
+        setConfirmedTransactions(transactions);
+        setShowOnboardingCards(!dashboardData.onboardingSeen);
+        setOnboardingSeen(dashboardData.onboardingSeen);
+        skipInitialDashboardSaveRef.current = true;
+        skipInitialPortfolioSaveRef.current = true;
+        skipInitialBotSaveRef.current = true;
+        setHasLoaded(true);
+      })
+      .catch((error: Error) => {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setDataLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [supabase, userId]);
 
   useEffect(() => {
     function syncSectionFromHash() {
@@ -275,39 +351,87 @@ export function LibertadDashboard() {
   }, []);
 
   useEffect(() => {
-    if (hasLoaded) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(inputs));
+    if (!hasLoaded || !supabase || !userId) {
+      return;
     }
-  }, [hasLoaded, inputs]);
+
+    if (skipInitialDashboardSaveRef.current) {
+      skipInitialDashboardSaveRef.current = false;
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setSaveStatus("saving");
+      setSaveError("");
+      saveDashboardSettings(supabase, userId, {
+        inputs,
+        roadmapSimulatedContribution,
+        onboardingSeen,
+      })
+        .then(() => setSaveStatus("saved"))
+        .catch((error: Error) => {
+          setSaveStatus("error");
+          setSaveError(error.message);
+        });
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    hasLoaded,
+    inputs,
+    onboardingSeen,
+    roadmapSimulatedContribution,
+    supabase,
+    userId,
+  ]);
 
   useEffect(() => {
-    if (hasLoaded) {
-      window.localStorage.setItem(
-        PORTFOLIO_STORAGE_KEY,
-        JSON.stringify(portfolioSettings),
-      );
+    if (!hasLoaded || !supabase || !userId) {
+      return;
     }
-  }, [hasLoaded, portfolioSettings]);
+
+    if (skipInitialPortfolioSaveRef.current) {
+      skipInitialPortfolioSaveRef.current = false;
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setSaveStatus("saving");
+      setSaveError("");
+      saveTargetPortfolio(supabase, userId, portfolioSettings)
+        .then(() => setSaveStatus("saved"))
+        .catch((error: Error) => {
+          setSaveStatus("error");
+          setSaveError(error.message);
+        });
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [hasLoaded, portfolioSettings, supabase, userId]);
 
   useEffect(() => {
-    if (hasLoaded) {
-      window.localStorage.setItem(
-        BOT_OPERA24HS_STORAGE_KEY,
-        JSON.stringify(botOperaInvestment),
-      );
+    if (!hasLoaded || !supabase || !userId) {
+      return;
     }
-  }, [botOperaInvestment, hasLoaded]);
 
-  useEffect(() => {
-    if (hasLoaded) {
-      window.localStorage.setItem(
-        ROADMAP_STORAGE_KEY,
-        JSON.stringify({
-          simulatedMonthlyContribution: roadmapSimulatedContribution,
-        }),
-      );
+    if (skipInitialBotSaveRef.current) {
+      skipInitialBotSaveRef.current = false;
+      return;
     }
-  }, [hasLoaded, roadmapSimulatedContribution]);
+
+    const timeout = window.setTimeout(() => {
+      setSaveStatus("saving");
+      setSaveError("");
+      saveBotOpera24hsInvestment(supabase, userId, botOperaInvestment)
+        .then(() => setSaveStatus("saved"))
+        .catch((error: Error) => {
+          setSaveStatus("error");
+          setSaveError(error.message);
+        });
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [botOperaInvestment, hasLoaded, supabase, userId]);
 
   const transactionSummary = useMemo(
     () => confirmedTransactionsSummary(confirmedTransactions),
@@ -548,6 +672,16 @@ export function LibertadDashboard() {
     window.history.pushState(null, "", `#${section}`);
   }
 
+  async function handleSignOut() {
+    if (!supabase) {
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setSession(null);
+    setConfirmedTransactions([]);
+  }
+
   const activeModule =
     modules.find((module) => module.id === activeSection) ?? modules[0];
   const needsDebtAttention = confirmedDebtLoad.highRiskCount > 0;
@@ -570,6 +704,41 @@ export function LibertadDashboard() {
         ? "Abrir cartera y corregir objetivos hasta 100%."
         : "Capturar una nota real y confirmar solo lo revisado.";
 
+  if (supabaseConfigError) {
+    return (
+      <AccessState
+        title="Configura Supabase"
+        body={`${supabaseConfigError} Agrega los valores en .env y reinicia el servidor.`}
+      />
+    );
+  }
+
+  if (!supabase) {
+    return (
+      <AccessState
+        title="Supabase no disponible"
+        body="No se puede iniciar la sesion ni cargar datos privados hasta configurar el cliente."
+      />
+    );
+  }
+
+  if (authLoading) {
+    return <AccessState title="Cargando sesion" body="Preparando acceso seguro..." />;
+  }
+
+  if (!userId) {
+    return <AuthPanel supabase={supabase} />;
+  }
+
+  if (dataLoading && !hasLoaded) {
+    return (
+      <AccessState
+        title="Cargando tus datos"
+        body="Leyendo settings, cartera, bot y transacciones confirmadas."
+      />
+    );
+  }
+
   return (
     <main
       id="dashboard"
@@ -589,6 +758,30 @@ export function LibertadDashboard() {
                 Un panel sobrio para medir tu numero x25, capturar decisiones y
                 convertir notas financieras en datos confirmados.
               </p>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <SyncStatusPill
+                  label={saveStatusLabel(saveStatus)}
+                  tone={saveStatus === "error" ? "red" : "green"}
+                />
+                {dataLoading ? (
+                  <SyncStatusPill label="Cargando datos" tone="neutral" />
+                ) : null}
+                {loadError || saveError ? (
+                  <span
+                    aria-live="polite"
+                    className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-950"
+                  >
+                    {loadError || saveError}
+                  </span>
+                ) : null}
+                <button
+                  className="min-h-8 rounded-md border border-white/15 bg-white/[0.06] px-3 text-xs font-semibold text-stone-200 transition-colors hover:border-white/30 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                  type="button"
+                  onClick={handleSignOut}
+                >
+                  Salir
+                </button>
+              </div>
               {showOnboardingCards ? (
                 <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
                   <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
@@ -848,6 +1041,8 @@ export function LibertadDashboard() {
 
           {activeSection === "notas" ? (
             <FinancialNotesModule
+              supabase={supabase}
+              userId={userId}
               onTransactionsChange={handleTransactionsChange}
             />
           ) : null}
@@ -954,6 +1149,172 @@ export function LibertadDashboard() {
         </div>
       </div>
     </main>
+  );
+}
+
+function AccessState({ title, body }: { title: string; body: string }) {
+  return (
+    <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-stone-950 sm:px-8">
+      <section className="mx-auto max-w-xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+        <h1 className="text-xl font-semibold text-stone-950">{title}</h1>
+        <p className="mt-2 text-sm leading-6 text-stone-600">{body}</p>
+      </section>
+    </main>
+  );
+}
+
+function AuthPanel({ supabase }: { supabase: SupabaseClient }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const [message, setMessage] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus("saving");
+    setMessage("");
+
+    const credentials = { email, password };
+    const result =
+      mode === "signin"
+        ? await supabase.auth.signInWithPassword(credentials)
+        : await supabase.auth.signUp(credentials);
+
+    if (result.error) {
+      setStatus("error");
+      setMessage(result.error.message);
+      return;
+    }
+
+    setStatus("saved");
+    setMessage(
+      mode === "signin"
+        ? "Sesion iniciada."
+        : "Cuenta creada. Revisa tu correo si Supabase pide confirmacion.",
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-stone-950 sm:px-8">
+      <section className="mx-auto max-w-xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+        <p className="text-sm font-semibold text-emerald-800">Libertad OS</p>
+        <h1 className="mt-1 text-2xl font-semibold text-stone-950">
+          Acceso privado
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-stone-600">
+          Inicia sesion para ver y modificar tus datos financieros persistentes.
+        </p>
+
+        <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
+          <label className="grid gap-2">
+            <span className="text-sm font-medium text-stone-700">Email</span>
+            <input
+              autoComplete="email"
+              className="libertad-field h-12 rounded-md px-3 text-sm font-semibold text-stone-950"
+              name="email"
+              spellCheck={false}
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-2">
+            <span className="text-sm font-medium text-stone-700">
+              Contrasena
+            </span>
+            <input
+              autoComplete={
+                mode === "signin" ? "current-password" : "new-password"
+              }
+              className="libertad-field h-12 rounded-md px-3 text-sm font-semibold text-stone-950"
+              minLength={6}
+              name="password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+
+          {message ? (
+            <p
+              aria-live="polite"
+              className={`rounded-md border px-3 py-2 text-sm ${
+                status === "error"
+                  ? "border-red-200 bg-red-50 text-red-950"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-950"
+              }`}
+            >
+              {message}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              className="min-h-11 rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition-colors hover:bg-stone-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+              disabled={status === "saving"}
+              type="submit"
+            >
+              {status === "saving"
+                ? "Guardando..."
+                : mode === "signin"
+                  ? "Iniciar sesion"
+                  : "Crear cuenta"}
+            </button>
+            <button
+              className="min-h-11 rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+              type="button"
+              onClick={() => {
+                setMode(mode === "signin" ? "signup" : "signin");
+                setMessage("");
+                setStatus("idle");
+              }}
+            >
+              {mode === "signin" ? "Crear cuenta" : "Ya tengo cuenta"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function saveStatusLabel(status: SaveStatus) {
+  if (status === "saving") {
+    return "Guardando";
+  }
+
+  if (status === "saved") {
+    return "Guardado";
+  }
+
+  if (status === "error") {
+    return "Error al guardar";
+  }
+
+  return "Sesion activa";
+}
+
+function SyncStatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "neutral" | "green" | "red";
+}) {
+  const toneClasses = {
+    neutral: "border-white/15 bg-white/[0.06] text-stone-200",
+    green: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
+    red: "border-red-300 bg-red-50 text-red-950",
+  };
+
+  return (
+    <span
+      aria-live="polite"
+      className={`inline-flex min-h-8 items-center rounded-md border px-3 text-xs font-semibold ${toneClasses[tone]}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -1428,7 +1789,7 @@ function BotOpera24hsPanel({
         </span>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {setupFields.map((field) => (
           <label key={field.key} className="grid gap-2">
             <span className="text-xs font-semibold text-stone-600">
@@ -1603,7 +1964,15 @@ function BotOpera24hsPanel({
                       <button
                         className="min-h-10 rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
                         type="button"
-                        onClick={() => onMonthRemove(month.month)}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Quitar el mes ${month.month} del historial?`,
+                            )
+                          ) {
+                            onMonthRemove(month.month);
+                          }
+                        }}
                       >
                         Quitar
                       </button>

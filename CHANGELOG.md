@@ -93,6 +93,20 @@
 * Impacto de gastos confirmados expresado como retraso aproximado en meses sobre el hito.
 * Tests de calculo para siguiente hito, hitos alcanzados y simulacion de mayor aporte.
 
+## v1.8.0 - Persistencia Segura Supabase
+
+* Autenticacion simple con Supabase Auth antes de mostrar datos privados.
+* Persistencia Supabase para datos base, cartera objetivo, Bot Opera24hs, reglas, notas y transacciones confirmadas.
+* Migracion SQL con RLS por usuario y `updated_at` automatico.
+* Convencion Next `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` para la anon key publica.
+* Confirmacion manual preservada: los datos detectados en notas no crean transacciones hasta confirmar.
+
+## v1.8.1 - Auth y Persistencia Privada
+
+* Acceso al dashboard y notas bloqueado por sesion real de Supabase Auth.
+* Se evita guardar automaticamente datos default de dashboard, cartera y bot al cargar una cuenta vacia.
+* Se evita crear una nota vacia en Supabase solo por abrir el modulo de notas.
+
 Todas las versiones verificadas con:
 
 * npm run lint
