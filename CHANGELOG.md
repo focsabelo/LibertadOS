@@ -127,6 +127,11 @@
 * Datos base y gastos fijos mensuales quedan como el nucleo operativo de la pantalla.
 * Gastos fijos siguen siendo informativos y no modifican las formulas ni el dashboard principal.
 
+## v1.9.3 - Layout global consistente
+
+* Header global unificado para todas las secciones, incluida Configuracion.
+* Eliminadas las tarjetas informativas del header para reducir altura y ruido visual.
+
 Todas las versiones verificadas con:
 
 * npm run lint

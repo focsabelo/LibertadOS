@@ -257,7 +257,6 @@ export function LibertadDashboard() {
   const [saveError, setSaveError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [onboardingSeen, setOnboardingSeen] = useState(false);
-  const [showOnboardingCards, setShowOnboardingCards] = useState(false);
   const [activeSection, setActiveSection] =
     useState<AppSection>("dashboard");
   const skipInitialDashboardSaveRef = useRef(true);
@@ -369,7 +368,6 @@ export function LibertadDashboard() {
         );
         setConfirmedTransactions(transactions);
         setFixedMonthlyExpenses(fixedExpenses);
-        setShowOnboardingCards(!dashboardData.onboardingSeen);
         setOnboardingSeen(dashboardData.onboardingSeen);
         skipInitialDashboardSaveRef.current = true;
         skipInitialPortfolioSaveRef.current = true;
@@ -890,7 +888,6 @@ export function LibertadDashboard() {
       : needsPortfolioAttention
         ? "Abrir cartera y corregir objetivos hasta 100%."
         : "Capturar una nota real y confirmar solo lo revisado.";
-  const isConfiguration = activeSection === "configuracion";
 
   if (supabaseConfigError) {
     return (
@@ -933,72 +930,20 @@ export function LibertadDashboard() {
       className="min-h-screen bg-[var(--background)] text-stone-950"
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-8 sm:py-7 lg:px-10">
-        <header
-          className={
-            isConfiguration
-              ? "rounded-lg border border-stone-200 bg-white px-4 py-4 text-stone-950 shadow-sm sm:px-5"
-              : "rounded-lg border border-stone-900 bg-stone-950 px-5 py-5 text-white shadow-sm sm:px-6"
-          }
-        >
-          <div
-            className={
-              isConfiguration
-                ? "flex flex-col gap-4"
-                : "flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"
-            }
-          >
-            <div className={isConfiguration ? "min-w-0" : "max-w-3xl"}>
-              {isConfiguration ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-emerald-800">
-                      Libertad OS
-                    </p>
-                    <h1 className="mt-1 text-2xl font-semibold tracking-normal text-stone-950 text-balance">
-                      Configuracion
-                    </h1>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SyncStatusPill
-                      label={saveStatusLabel(saveStatus)}
-                      tone={saveStatus === "error" ? "red" : "green"}
-                    />
-                    {dataLoading ? (
-                      <SyncStatusPill label="Cargando datos" tone="neutral" />
-                    ) : null}
-                    {loadError || saveError ? (
-                      <span
-                        aria-live="polite"
-                        className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-950"
-                      >
-                        {loadError || saveError}
-                      </span>
-                    ) : null}
-                    <button
-                      className="min-h-8 rounded-md border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-                      type="button"
-                      onClick={handleSignOut}
-                    >
-                      Salir
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-emerald-300">
-                    Libertad OS
-                  </p>
-                  <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white text-balance sm:text-4xl">
-                    Sistema personal de libertad financiera
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-base leading-7 text-stone-300">
-                    Un panel sobrio para medir tu numero x25, capturar decisiones y
-                    convertir notas financieras en datos confirmados.
-                  </p>
-                </>
-              )}
-              {!isConfiguration ? (
-                <div className="mt-4 flex flex-wrap items-center gap-2">
+        <header className="rounded-lg border border-stone-900 bg-stone-950 px-5 py-4 text-white shadow-sm sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-emerald-300">
+                Libertad OS
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white text-balance sm:text-4xl">
+                Sistema personal de libertad financiera
+              </h1>
+              <p className="mt-2 max-w-2xl text-base leading-7 text-stone-300">
+                Un panel sobrio para medir tu numero x25, capturar decisiones y
+                convertir notas financieras en datos confirmados.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <SyncStatusPill
                   label={saveStatusLabel(saveStatus)}
                   tone={saveStatus === "error" ? "red" : "green"}
@@ -1021,37 +966,10 @@ export function LibertadDashboard() {
                 >
                   Salir
                 </button>
-                </div>
-              ) : null}
-              {!isConfiguration && showOnboardingCards ? (
-                <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
-                  <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
-                    <p className="font-semibold text-white">Manual primero</p>
-                    <p className="mt-1 text-xs leading-5 text-stone-300">
-                      Las notas solo impactan al confirmar.
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
-                    <p className="font-semibold text-white">x25 visible</p>
-                    <p className="mt-1 text-xs leading-5 text-stone-300">
-                      Cada decision muestra consecuencia.
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
-                    <p className="font-semibold text-white">Sin automatismos</p>
-                    <p className="mt-1 text-xs leading-5 text-stone-300">
-                      Sugerir, revisar, confirmar.
-                    </p>
-                  </div>
-                </div>
-              ) : null}
+              </div>
             </div>
             <nav
-              className={
-                isConfiguration
-                  ? "grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-8"
-                  : "grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl lg:grid-cols-4"
-              }
+              className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl lg:grid-cols-4"
               aria-label="Secciones"
             >
               {modules.map((module) => (
@@ -1059,13 +977,9 @@ export function LibertadDashboard() {
                   key={module.label}
                   aria-pressed={activeSection === module.id}
                   className={`min-h-12 rounded-md border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
-                    isConfiguration
-                      ? activeSection === module.id
-                        ? "border-stone-950 bg-stone-950 text-white focus-visible:outline-emerald-700"
-                        : "border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300 hover:bg-white focus-visible:outline-emerald-700"
-                      : activeSection === module.id
-                        ? "border-white bg-white text-stone-950 focus-visible:outline-emerald-300"
-                        : "border-white/15 bg-white/[0.06] text-stone-200 hover:border-white/30 hover:bg-white/10 focus-visible:outline-emerald-300"
+                    activeSection === module.id
+                      ? "border-white bg-white text-stone-950 focus-visible:outline-emerald-300"
+                      : "border-white/15 bg-white/[0.06] text-stone-200 hover:border-white/30 hover:bg-white/10 focus-visible:outline-emerald-300"
                   }`}
                   type="button"
                   onClick={() => selectSection(module.id)}
@@ -1087,7 +1001,7 @@ export function LibertadDashboard() {
           className="grid gap-5 scroll-mt-6"
           aria-live="polite"
         >
-          {activeSection === "notas" || isConfiguration ? null : (
+          {activeSection === "notas" || activeSection === "configuracion" ? null : (
             <section className="libertad-soft-panel rounded-lg p-4 sm:p-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
