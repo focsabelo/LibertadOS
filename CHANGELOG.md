@@ -120,6 +120,13 @@
 * Los eventos de refresco de sesion de Supabase ya no vacian la lista de gastos fijos al cambiar de pestana del navegador.
 * Regresion automatizada para preservar datos privados en memoria cuando el usuario autenticado no cambia.
 
+## v1.9.2 - Configuracion Operativa
+
+* Configuracion usa una cabecera compacta sin repetir el hero principal.
+* Se quitaron de Configuracion las tarjetas introductorias y las metricas de atencion semanal.
+* Datos base y gastos fijos mensuales quedan como el nucleo operativo de la pantalla.
+* Gastos fijos siguen siendo informativos y no modifican las formulas ni el dashboard principal.
+
 Todas las versiones verificadas con:
 
 * npm run lint

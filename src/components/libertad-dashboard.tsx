@@ -890,6 +890,7 @@ export function LibertadDashboard() {
       : needsPortfolioAttention
         ? "Abrir cartera y corregir objetivos hasta 100%."
         : "Capturar una nota real y confirmar solo lo revisado.";
+  const isConfiguration = activeSection === "configuracion";
 
   if (supabaseConfigError) {
     return (
@@ -932,20 +933,72 @@ export function LibertadDashboard() {
       className="min-h-screen bg-[var(--background)] text-stone-950"
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-8 sm:py-7 lg:px-10">
-        <header className="rounded-lg border border-stone-900 bg-stone-950 px-5 py-5 text-white shadow-sm sm:px-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-emerald-300">
-                Libertad OS
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white text-balance sm:text-4xl">
-                Sistema personal de libertad financiera
-              </h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-stone-300">
-                Un panel sobrio para medir tu numero x25, capturar decisiones y
-                convertir notas financieras en datos confirmados.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+        <header
+          className={
+            isConfiguration
+              ? "rounded-lg border border-stone-200 bg-white px-4 py-4 text-stone-950 shadow-sm sm:px-5"
+              : "rounded-lg border border-stone-900 bg-stone-950 px-5 py-5 text-white shadow-sm sm:px-6"
+          }
+        >
+          <div
+            className={
+              isConfiguration
+                ? "flex flex-col gap-4"
+                : "flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"
+            }
+          >
+            <div className={isConfiguration ? "min-w-0" : "max-w-3xl"}>
+              {isConfiguration ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Libertad OS
+                    </p>
+                    <h1 className="mt-1 text-2xl font-semibold tracking-normal text-stone-950 text-balance">
+                      Configuracion
+                    </h1>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SyncStatusPill
+                      label={saveStatusLabel(saveStatus)}
+                      tone={saveStatus === "error" ? "red" : "green"}
+                    />
+                    {dataLoading ? (
+                      <SyncStatusPill label="Cargando datos" tone="neutral" />
+                    ) : null}
+                    {loadError || saveError ? (
+                      <span
+                        aria-live="polite"
+                        className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-950"
+                      >
+                        {loadError || saveError}
+                      </span>
+                    ) : null}
+                    <button
+                      className="min-h-8 rounded-md border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                      type="button"
+                      onClick={handleSignOut}
+                    >
+                      Salir
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-emerald-300">
+                    Libertad OS
+                  </p>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white text-balance sm:text-4xl">
+                    Sistema personal de libertad financiera
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-base leading-7 text-stone-300">
+                    Un panel sobrio para medir tu numero x25, capturar decisiones y
+                    convertir notas financieras en datos confirmados.
+                  </p>
+                </>
+              )}
+              {!isConfiguration ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                 <SyncStatusPill
                   label={saveStatusLabel(saveStatus)}
                   tone={saveStatus === "error" ? "red" : "green"}
@@ -968,8 +1021,9 @@ export function LibertadDashboard() {
                 >
                   Salir
                 </button>
-              </div>
-              {showOnboardingCards ? (
+                </div>
+              ) : null}
+              {!isConfiguration && showOnboardingCards ? (
                 <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
                   <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2">
                     <p className="font-semibold text-white">Manual primero</p>
@@ -993,17 +1047,25 @@ export function LibertadDashboard() {
               ) : null}
             </div>
             <nav
-              className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl lg:grid-cols-4"
+              className={
+                isConfiguration
+                  ? "grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-8"
+                  : "grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl lg:grid-cols-4"
+              }
               aria-label="Secciones"
             >
               {modules.map((module) => (
                 <button
                   key={module.label}
                   aria-pressed={activeSection === module.id}
-                  className={`min-h-14 rounded-md border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 ${
-                    activeSection === module.id
-                      ? "border-white bg-white text-stone-950"
-                      : "border-white/15 bg-white/[0.06] text-stone-200 hover:border-white/30 hover:bg-white/10"
+                  className={`min-h-12 rounded-md border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                    isConfiguration
+                      ? activeSection === module.id
+                        ? "border-stone-950 bg-stone-950 text-white focus-visible:outline-emerald-700"
+                        : "border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300 hover:bg-white focus-visible:outline-emerald-700"
+                      : activeSection === module.id
+                        ? "border-white bg-white text-stone-950 focus-visible:outline-emerald-300"
+                        : "border-white/15 bg-white/[0.06] text-stone-200 hover:border-white/30 hover:bg-white/10 focus-visible:outline-emerald-300"
                   }`}
                   type="button"
                   onClick={() => selectSection(module.id)}
@@ -1025,7 +1087,7 @@ export function LibertadDashboard() {
           className="grid gap-5 scroll-mt-6"
           aria-live="polite"
         >
-          {activeSection === "notas" ? null : (
+          {activeSection === "notas" || isConfiguration ? null : (
             <section className="libertad-soft-panel rounded-lg p-4 sm:p-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -1258,8 +1320,8 @@ export function LibertadDashboard() {
           {activeSection === "configuracion" ? (
             <>
               <section className="libertad-surface rounded-lg p-5 sm:p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="max-w-3xl">
                     <h2 className="text-xl font-semibold text-stone-950">
                       Datos base
                     </h2>
@@ -1268,6 +1330,9 @@ export function LibertadDashboard() {
                       se suman encima sin pisar tus supuestos.
                     </p>
                   </div>
+                  <p className="text-sm font-medium text-stone-500">
+                    Guardado automatico
+                  </p>
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1463,7 +1528,7 @@ function AuthPanel({ supabase }: { supabase: SupabaseClient }) {
               type="submit"
             >
               {status === "saving"
-                ? "Guardando..."
+                ? "Guardando…"
                 : mode === "signin"
                   ? "Iniciar sesion"
                   : "Crear cuenta"}
@@ -1818,45 +1883,47 @@ function FixedMonthlyExpensesPanel({
 
   return (
     <section className="libertad-surface rounded-lg p-5 sm:p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-3xl">
           <h2 className="text-xl font-semibold text-stone-950">
             Gastos fijos mensuales
           </h2>
           <p className="mt-1 text-sm leading-6 text-stone-600">
-            Anota un gasto recurrente en texto simple. Se guarda como registro
-            estructurado y queda editable antes de usarlo en otra parte.
+            Registra gastos recurrentes para revisarlos aparte. Por ahora son
+            informativos: no modifican formulas ni el dashboard principal.
           </p>
         </div>
-        <div className="rounded-md border border-stone-200 bg-stone-50 px-4 py-3">
-          <p className="text-xs font-medium text-stone-500">Total activo</p>
-          <p className="libertad-number mt-1 text-lg font-semibold text-stone-950">
+        <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+          <p className="text-xs font-medium text-stone-500">
+            Total activo informativo
+          </p>
+          <p className="libertad-number mt-1 text-base font-semibold text-stone-950">
             {totalLabel}
           </p>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <label className="grid gap-2">
           <span className="text-sm font-medium text-stone-700">
             Nuevo gasto fijo
           </span>
           <textarea
             autoComplete="off"
-            className="libertad-field libertad-ledger min-h-32 resize-y rounded-md bg-white px-4 py-3 text-base leading-8 text-stone-950 placeholder:text-stone-500"
+            className="libertad-field libertad-ledger min-h-28 resize-y rounded-md bg-white px-4 py-3 text-base leading-8 text-stone-950 placeholder:text-stone-500"
             name="fixed-expense-capture"
-            placeholder="Ej: Alquiler apartamento UYU 42000..."
+            placeholder="Ej: Alquiler apartamento UYU 42000…"
             value={draftText}
             onChange={(event) => onDraftTextChange(event.target.value)}
           />
         </label>
 
-        <div className="libertad-soft-panel rounded-md p-4">
+        <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
           <p className="text-sm font-semibold text-stone-800">
-            Vista estructurada
+            Lectura previa
           </p>
           {parsedDraft ? (
-            <div className="mt-3 grid gap-3">
+            <div className="mt-3 grid gap-2">
               <FixedExpensePreviewStat label="Nombre" value={parsedDraft.name} />
               <FixedExpensePreviewStat label="Categoria" value={parsedDraft.category} />
               <FixedExpensePreviewStat
@@ -1869,8 +1936,7 @@ function FixedMonthlyExpensesPanel({
             </div>
           ) : (
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Escribe una linea como si fuera una nota. Si falta categoria,
-              monto o moneda, se completan con defaults editables.
+              Escribe una linea; los campos quedan editables despues.
             </p>
           )}
           <button
@@ -1879,7 +1945,7 @@ function FixedMonthlyExpensesPanel({
             type="button"
             onClick={onCreate}
           >
-            {actionStatus === "saving" ? "Guardando..." : "Crear gasto fijo"}
+            {actionStatus === "saving" ? "Guardando…" : "Crear gasto fijo"}
           </button>
         </div>
       </div>
@@ -2171,7 +2237,7 @@ function FixedExpenseEditRow({
             type="button"
             onClick={onSave}
           >
-            {saving ? "Guardando..." : "Guardar cambios"}
+            {saving ? "Guardando…" : "Guardar cambios"}
           </button>
         </div>
       </div>
