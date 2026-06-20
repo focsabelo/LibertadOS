@@ -541,3 +541,6 @@ Cada módulo debe responder:
 4. v2.0.0 Margen Financiero.
 5. v2.1.0 Reglas de Aumentos e Ingresos Extra.
 6. v2.2.0 Revisión Mensual.
+
+
+
