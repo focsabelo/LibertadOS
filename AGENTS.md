@@ -1,201 +1,97 @@
 <!-- BEGIN:nextjs-agent-rules -->
 # Next.js Guidance
 
-This project uses a newer Next.js version with breaking changes. Read the relevant guide in `node_modules/next/dist/docs/` when a change touches Next APIs, routing, config, server/client boundaries, environment variables, or build behavior. Heed deprecation notices.
+This project uses a newer Next.js version with breaking changes. When touching Next APIs, routing, config, server/client boundaries, environment variables, or build behavior, read the relevant guide in `node_modules/next/dist/docs/` and heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
 # Libertad OS Agent Rules
 
-## Product Context
+Libertad OS is a personal finance app for tracking the path toward financial freedom. It pairs a serious, minimal dashboard with an iCloud Notes-like capture and review flow for natural-language financial notes.
 
-Libertad OS is a personal finance web app for tracking the path toward financial freedom. It combines a serious, minimal financial dashboard with an iCloud Notes-like capture interface for turning natural-language financial notes into reviewed, structured data.
+Use `PRODUCT.md` as the product source of truth when product intent, scope, or tone is unclear. Keep changes scoped; improve the existing Next.js / TypeScript / Tailwind app, do not rebuild or replace the stack without explicit permission.
 
-Use `PRODUCT.md` as the product source of truth. Do not duplicate or contradict it. If product intent, design tone, or scope is unclear, read `PRODUCT.md` before editing.
+## Core Product Rules
 
-## Do Not Break
+- Interpreted financial data only becomes real after explicit user confirmation.
+- Detected notes must not update the dashboard before confirmation.
+- Do not save interpreted data as transactions or real financial records without manual review.
+- Do not delete, overwrite, or migrate user data unless the migration is explicit and safe.
+- If localStorage data still exists, preserve it or migrate it deliberately.
+- Do not add dependencies unless the existing stack cannot reasonably solve the task.
+- Small copy edits, narrow fixes, and instruction-only changes should stay lightweight; do not run heavy design, documentation, or audit workflows unless they are relevant.
 
-- Do not remove the rule that interpreted financial data only becomes real after explicit user confirmation.
-- Do not make detected notes automatically update the dashboard before confirmation.
-- Do not rebuild the app from scratch without explicit permission.
-- Do not replace the existing Next.js/TypeScript/Tailwind stack unless explicitly requested.
-- Do not add dependencies unless the benefit is clear and the existing stack cannot reasonably solve the task.
-- Do not delete or overwrite user data without an explicit, safe migration.
-- If user data still exists in localStorage, preserve it or migrate it in a controlled way before replacing persistence.
-- Do not change financial formulas casually. Any change to financial logic must be deliberate and easy to review.
+## Supabase / Security Rules
 
-## Commands
+- Use only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in browser-safe code.
+- Never expose or commit `.env`, `.env.local`, secrets, API keys, `service_role` keys, or private credentials.
+- Keep `.env.example` free of real values.
+- Every private user table must have RLS enabled.
+- RLS policies for private user data must protect rows with `auth.uid() = user_id`.
+- Do not bypass RLS from client-side code or allow private data access without a session.
+- Every user-created record must be associated with the authenticated user.
+- Schema changes must live in `supabase/migrations`.
+- If a migration is added, tell the user it must be run in Supabase.
 
-Run these from the project root:
+## Financial & Notes Rules
+
+- Do not change financial formulas casually; any financial logic change must be deliberate, reviewable, and tested when possible.
+- Freedom number = monthly spend x 12 x 25.
+- Annual spend = monthly spend x 12.
+- Progress = current/effective net worth divided by the freedom number.
+- Confirmed income and savings increase effective net worth.
+- Confirmed expenses and debts decrease effective net worth.
+- Confirmed investments increase effective invested capital and effective net worth.
+- Recurring confirmed expenses increase effective desired monthly spend.
+- One-off expenses affect the freedom number as annualized monthly impact only when shown as `freedomImpact`.
+- Preserve the distinction between base assumptions, detected previews, and confirmed note-derived data.
+- Always preserve original note text and processed detected data.
+- Notes can detect expenses, income, investments, savings, debts, and decisions.
+- Only detected items with `intent === "real"` and not ignored are confirmable.
+- The parser must distinguish real actions from intentions, thoughts, and negations such as `gaste`, `quiero gastar`, `pense en gastar`, and `no gaste`.
+- Keep `vivienda`, `transporte`, and `comida` visually and logically important.
+- Keep impulse detection visible and editable; the app can suggest, not judge.
+- Do not move notes between folders while the user is typing unless explicitly requested.
+
+## UI Rules
+
+- The product should feel like iCloud Notes crossed with a serious, premium financial dashboard.
+- Prefer calm, restrained, high-trust UI over decorative fintech, crypto, trading, gamified, or marketing-page aesthetics.
+- Keep dashboard information dense but readable.
+- Keep the notes surface familiar: sidebar, note list, editor, detected-data panel.
+- Use hierarchy to separate base assumptions, detected preview, confirmed transactions, and dashboard consequences.
+- Maintain accessible contrast, visible focus states, readable text, and responsive layouts.
+- Avoid unnecessary nested cards; use cards only for repeated items, framed tools, or meaningful groups.
+- Keep labels and copy practical, calm, and concise.
+- For significant UI, UX, layout, accessibility, responsive, chart, or visual polish work, consult the relevant frontend skills and use Impeccable when it materially helps.
+- For small style fixes, microcopy, instruction edits, and narrow bugs, do not run full frontend, Impeccable, browser, or detector workflows unless the change meaningfully affects the user experience.
+
+## Workflow / Git Rules
+
+Run from the project root when relevant:
 
 ```bash
 npm run lint
 npm run build
 npm run test:parser
-```
-
-For local development:
-
-```bash
 npm run dev
 ```
 
-The app normally runs at `http://127.0.0.1:3000` or `http://localhost:3000`.
-
-## Git / GitHub Rules
-
-After completing any meaningful change, prepare the project for GitHub.
-
-Before committing:
-
-- Run `npm run lint`.
-- Run `npm run build`.
-- Run relevant tests if they exist.
-- Run `git status`.
-- Review `git diff` and untracked files.
-- Never commit `.env`, `.env.local`, secrets, API keys, `service_role` keys, or private credentials.
-- Do not use `git add .` blindly if there are unrelated or suspicious files.
+- Use `npm run dev` for local development; the app usually runs at `http://127.0.0.1:3000` or `http://localhost:3000`.
+- Before any meaningful commit, run relevant checks, review `git status`, review `git diff`, and ensure no secrets or unrelated files are included.
+- Stage only relevant files; do not use `git add .` blindly.
 - Keep commits scoped to the actual task.
+- Do not commit or push when lint/build/relevant tests fail, secrets appear, unrelated files changed, the task is incomplete, or the user asked not to.
+- Do not push to `main` without explicit permission.
+- Push only when the user asked for it or the task explicitly includes publishing/deploying.
+- For user-facing changes, features, bugfixes, behavior changes, financial logic changes, or meaningful design updates, update `CHANGELOG.md`. Skip changelog entries for internal refactors, formatting-only edits, test-only changes, minor instruction edits, and exploratory work unless requested.
+- At the end of git work, report commit hash if committed, files committed, push status, and whether Vercel should deploy automatically.
 
-If the change is valid and the working tree only contains intended files:
+## Important Files
 
-- Stage only the relevant files.
-- Create a clear commit message describing the real change.
-- Push only when the user asked for it, or when the task explicitly includes publishing/deploying.
-- Prefer pushing the current task branch. Push to `origin main` only when the repo workflow expects direct main commits.
-
-Use commands like:
-
-```bash
-git status
-git diff
-git add <relevant-files>
-git diff --cached
-git commit -m "Clear description of the change"
-git push origin <branch>
-```
-
-Do not commit or push if:
-
-- lint/build fails.
-- Relevant tests fail.
-- Secrets appear in `git status`, `git diff`, or staged files.
-- Unrelated files changed.
-- The user explicitly asked not to commit or push.
-- The task is exploratory or incomplete.
-- The target branch is unclear.
-
-At the end, report:
-
-- Commit hash, if committed.
-- Files committed.
-- Whether push succeeded.
-- Whether Vercel should deploy automatically.
-
-## Changelog
-
-- For any user-facing change, feature, bugfix, behavior change, financial logic change, or meaningful design update, update `CHANGELOG.md` in the same task.
-- Do not add changelog entries for purely internal refactors, formatting-only edits, test-only changes, or minor agent-instruction edits unless the user explicitly asks for it.
-- Keep changelog entries concise, concrete, and easy to review.
-
-## Supabase Rules
-
-- Use `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for browser-safe Supabase configuration.
-- Do not expose `service_role`, secret keys, or private credentials in frontend code.
-- Do not commit `.env.local`.
-- Keep `.env.example` free of real values.
-- Every private user table must have RLS enabled.
-- Policies must protect user data with `auth.uid() = user_id`.
-- Schema changes must live in `supabase/migrations`.
-- Do not bypass RLS from client-side code.
-- Do not allow access to private data when there is no session.
-- Every user-created record must be associated with the authenticated user.
-
-## Financial Logic Rules
-
-- The freedom number is monthly spend x 12 x 25.
-- Annual spend is monthly spend x 12.
-- Progress is current/effective net worth divided by the freedom number.
-- Confirmed income and savings increase effective net worth.
-- Confirmed expenses and debts decrease effective net worth.
-- Confirmed investments increase effective invested capital and effective net worth.
-- Recurring confirmed expenses increase effective desired monthly spend.
-- One-off expenses should affect the freedom number as an annualized monthly impact only when shown as `freedomImpact`.
-- Preserve the distinction between base assumptions and confirmed note-derived data.
-
-Core financial utilities live in `src/lib/finance.ts` and note parsing logic lives in `src/lib/financial-notes.ts`.
-
-## Notes Module Rules
-
-- The notes module is not a generic notes app. Its job is fast capture plus structured review.
-- Always preserve the original note text and the processed detected data.
-- A note can detect expenses, income, investments, savings, debts, and decisions.
-- The parser must distinguish real actions from intentions, thoughts, and negations:
-  - Real: `gaste`, `cobre`, `inverti`.
-  - Intention: `quiero gastar`, `voy a comprar`.
-  - Thought: `pense en gastar`, `estoy considerando`.
-  - Negation: `no gaste`, `no compre`, `evite`.
-- Only items with `intent === "real"` and not ignored are confirmable.
-- Never save interpreted financial data as a transaction without the user's explicit confirmation.
-- Keep `vivienda`, `transporte`, and `comida` visually and logically important because they are core expenses.
-- Keep impulse detection visible but editable. The app can suggest, not judge.
-- Avoid moving notes between folders while the user is typing unless that behavior is explicitly requested.
-
-## Design Rules
-
-- The product should feel like iCloud Notes crossed with a serious, premium financial dashboard.
-- Prefer restrained, calm, high-trust UI over decorative fintech styling.
-- Keep dashboard information dense but readable.
-- Keep the notes surface familiar: sidebar, note list, editor, detected-data panel.
-- Use visual hierarchy to separate base assumptions, detected preview, confirmed transactions, and dashboard consequences.
-- Maintain accessible contrast, visible focus states, readable text, and responsive layouts.
-- Do not use loud gradients, crypto/trading aesthetics, gamified badges, or marketing-page hero composition.
-- Avoid unnecessary nested cards. Use cards only for repeated items, framed tools, and meaningful groupings.
-- Keep labels and copy practical, calm, and concise.
-
-## Frontend Skills
-
-For significant UI, UX, layout, responsive, accessibility, dashboard, modal, form, chart, visualization, or styling changes, consult the relevant project frontend skills:
-
-- Use `frontend-design` (`.agents/skills/frontend/SKILL.md`) and `web-design-guidelines` (`.agents/skills/frontend3/SKILL.md`) for dashboard, layout, screens, components, accessibility, and responsive behavior.
-- Use `d3-viz` (`.agents/skills/frontend2/SKILL.md`) for charts, visualizations, dashboard data graphics, or custom data displays.
-- Use Impeccable for meaningful visual polish, hierarchy, copy, empty states, responsive behavior, or accessibility work.
-
-For minimal copy edits, tiny style fixes, or narrowly scoped bug fixes, use judgment and do not run the full frontend-skill workflow unless the change meaningfully affects the user experience.
-
-Do not modify business logic unless necessary to connect the UI. Maintain Libertad OS's calm, serious, premium, clear style, with no generic fintech noise and with manual confirmation treated as sacred.
-
-## Impeccable
-
-Use Impeccable for important visual, UX, layout, hierarchy, copy, empty-state, responsive, or accessibility changes. It is optional for microcopy edits and minor visual fixes.
-
-For substantial design work, run:
-
-```bash
-node .agents/skills/impeccable/scripts/context.mjs
-```
-
-Then follow the relevant Impeccable reference for the task, usually:
-
-- `reference/product.md` for this app's register.
-- `reference/polish.md` for final UI quality passes.
-- `reference/critique.md`, `layout.md`, `clarify.md`, `harden.md`, or `adapt.md` when the task fits.
-
-Before considering substantial UI work done, run:
-
-```bash
-node .agents/skills/impeccable/scripts/detect.mjs --json src/components/libertad-dashboard.tsx src/components/financial-notes-module.tsx src/app/globals.css
-```
-
-Treat detector output as evidence, not as the only quality bar. Inspect the app in a browser when visual changes are meaningful.
-
-## Implementation Notes
-
-- Main app surface: `src/components/libertad-dashboard.tsx`.
-- Notes UI: `src/components/financial-notes-module.tsx`.
-- Financial formulas: `src/lib/finance.ts`.
-- Natural-language parser and note types: `src/lib/financial-notes.ts`.
-- Global CSS: `src/app/globals.css`.
-- Supabase schema changes: `supabase/migrations`.
-- Product intent: `PRODUCT.md`.
-
-Keep changes scoped. Improve the existing app; do not replace it.
+- Product intent: `PRODUCT.md`
+- Main app surface: `src/components/libertad-dashboard.tsx`
+- Notes UI: `src/components/financial-notes-module.tsx`
+- Financial formulas: `src/lib/finance.ts`
+- Natural-language parser and note types: `src/lib/financial-notes.ts`
+- Global CSS: `src/app/globals.css`
+- Supabase migrations: `supabase/migrations`
