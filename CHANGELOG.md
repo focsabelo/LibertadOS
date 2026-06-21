@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## v2.0.4 - Notas en moneda local y patrimonio
+
+* Las notas nuevas usan UYU como moneda base y permiten elegir moneda por nota.
+* El parser respeta la moneda elegida cuando el texto no trae USD/UYU explicito.
+* Los gastos confirmados desde notas ya no reducen el patrimonio efectivo del dashboard.
+* Datos base ya no muestra placeholders numericos de ejemplo.
+* Gastos fijos renombra el total a "Total gastos fijos mensuales".
+* Migracion Supabase para guardar la moneda de cada nota.
+
+## v2.0.3 - Fase 1C de claridad operativa
+
+* Navegación principal reducida a tabs compactos: Dashboard, Notas, Margen y Configuración.
+* Decisiones, Cartera, Deuda, Palancas, Estilo, Semana, Roadmap y Macro pasan a una fila secundaria avanzada.
+* Dashboard enfocado en libertad financiera, margen mensual, patrimonio/capital, próximos pasos y captura rápida.
+* Header más bajo, con menos borde, menos cajas y navegación secundaria más liviana.
+
 ## v2.0.2 - Fase 1B de estabilidad
 
 * Cuentas nuevas ahora arrancan sin patrimonio, capital invertido, gasto mensual ni aporte mensual de ejemplo como datos activos.

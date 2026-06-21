@@ -12,7 +12,6 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { shouldResetPrivateDataForAuthChange } from "@/lib/auth-state";
 import {
   FinancialNotesModule,
-  confirmedTransactionsSummary,
 } from "@/components/financial-notes-module";
 import type { ConfirmedFinancialTransaction } from "@/lib/financial-notes";
 import {
@@ -32,6 +31,8 @@ import {
   analyzeWealthRoadmap,
   annualSpend,
   analyzeLifestyleInflation,
+  calculateEffectiveInputs,
+  confirmedTransactionsSummary,
   completionPercent,
   coreExpenseShare,
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
@@ -114,7 +115,6 @@ type Field = {
   suffix?: string;
   step?: string;
   placeholder?: string;
-  help?: string;
 };
 
 const fields: Field[] = [
@@ -123,40 +123,30 @@ const fields: Field[] = [
     label: "Patrimonio actual",
     prefix: "USD",
     step: "500",
-    placeholder: "Ej: 85000",
-    help: "Total real que queres usar como punto de partida.",
   },
   {
     id: "investedCapital",
     label: "Capital invertido",
     prefix: "USD",
     step: "500",
-    placeholder: "Ej: 62000",
-    help: "Solo capital ya invertido; si todavia no lo cargaste, dejalo vacio.",
   },
   {
     id: "desiredMonthlySpend",
     label: "Gasto mensual deseado",
     prefix: "USD",
     step: "100",
-    placeholder: "Ej: 3000",
-    help: "Base para calcular el numero x25.",
   },
   {
     id: "monthlyContribution",
     label: "Aporte mensual",
     prefix: "USD",
     step: "100",
-    placeholder: "Ej: 1800",
-    help: "Aporte mensual esperado para estimar tiempos.",
   },
   {
     id: "expectedAnnualReturn",
     label: "Retorno anual esperado",
     suffix: "%",
     step: "0.1",
-    placeholder: "Ej: 7",
-    help: "Supuesto de retorno para proyecciones; no es patrimonio real.",
   },
 ];
 
@@ -177,11 +167,13 @@ type AppSection =
   | "semana"
   | "roadmap"
   | "macro"
+  | "palancas"
+  | "estilo"
   | "configuracion";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
-const modules: {
+const primaryModules: {
   id: AppSection;
   label: string;
   description: string;
@@ -194,12 +186,7 @@ const modules: {
   {
     id: "notas",
     label: "Notas",
-    description: "Captura y revision",
-  },
-  {
-    id: "decisiones",
-    label: "Decisiones",
-    description: "Filtro anti-error",
+    description: "Captura y revisión",
   },
   {
     id: "margen",
@@ -207,9 +194,26 @@ const modules: {
     description: "Libertad mensual",
   },
   {
+    id: "configuracion",
+    label: "Configuración",
+    description: "Datos base",
+  },
+];
+
+const secondaryModules: {
+  id: AppSection;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "decisiones",
+    label: "Decisiones",
+    description: "Filtro anti-error",
+  },
+  {
     id: "cartera",
     label: "Cartera",
-    description: "Asignacion objetivo",
+    description: "Asignación objetivo",
   },
   {
     id: "deuda",
@@ -217,9 +221,19 @@ const modules: {
     description: "Carga confirmada",
   },
   {
+    id: "palancas",
+    label: "Palancas",
+    description: "Impacto FIRE",
+  },
+  {
+    id: "estilo",
+    label: "Estilo",
+    description: "Inflación de vida",
+  },
+  {
     id: "semana",
     label: "Semana",
-    description: "Ejecucion semanal",
+    description: "Ejecución semanal",
   },
   {
     id: "roadmap",
@@ -231,12 +245,9 @@ const modules: {
     label: "Macro",
     description: "Contexto externo",
   },
-  {
-    id: "configuracion",
-    label: "Config",
-    description: "Supuestos base",
-  },
 ];
+
+const modules = [...primaryModules, ...secondaryModules];
 
 type TransactionSummary = ReturnType<typeof confirmedTransactionsSummary>;
 
@@ -586,13 +597,7 @@ export function LibertadDashboard() {
   }, [confirmedTransactions, weeklyExecutionReviews]);
 
   const effectiveInputs = useMemo(
-    () => ({
-      ...inputs,
-      netWorth: inputs.netWorth + transactionSummary.netWorthDelta,
-      investedCapital: inputs.investedCapital + transactionSummary.investedDelta,
-      desiredMonthlySpend:
-        inputs.desiredMonthlySpend + transactionSummary.recurringMonthlyExpenses,
-    }),
+    () => calculateEffectiveInputs(inputs, transactionSummary),
     [inputs, transactionSummary],
   );
 
@@ -979,8 +984,6 @@ export function LibertadDashboard() {
     setWeeklyExecutionReviews([]);
   }
 
-  const activeModule =
-    modules.find((module) => module.id === activeSection) ?? modules[0];
   const needsDebtAttention = confirmedDebtLoad.highRiskCount > 0;
   const needsMarginAttention =
     financialMargin.state === "fragil" || financialMargin.state === "ajustado";
@@ -1011,6 +1014,19 @@ export function LibertadDashboard() {
         : needsPortfolioAttention
           ? "Abrir cartera y corregir objetivos hasta 100%."
           : weeklyExecution.recommendation;
+  const primaryActionSection: AppSection = needsDebtAttention
+    ? "deuda"
+    : needsMarginAttention
+      ? "margen"
+      : needsLifestyleAttention
+        ? "dashboard"
+        : needsPortfolioAttention
+          ? "cartera"
+          : needsWeeklyExecution
+            ? "semana"
+            : isGuidedEmptyState
+              ? "configuracion"
+              : "notas";
 
   if (supabaseConfigError) {
     return (
@@ -1050,23 +1066,23 @@ export function LibertadDashboard() {
   return (
     <main
       id="dashboard"
-      className="min-h-screen bg-[var(--background)] text-stone-950"
+      className="min-h-screen overflow-x-hidden bg-[var(--background)] text-stone-950"
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-8 sm:py-7 lg:px-10">
-        <header className="rounded-lg border border-stone-900 bg-stone-950 px-5 py-4 text-white shadow-sm sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-4 sm:px-8 sm:py-6 lg:px-10">
+        <header className="max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-stone-900 bg-stone-950 px-4 py-3 text-white shadow-sm sm:max-w-none sm:px-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 max-w-3xl">
               <p className="text-sm font-semibold uppercase tracking-[0.08em] text-emerald-300">
                 Libertad OS
               </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white text-balance sm:text-4xl">
+              <h1 className="mt-1.5 text-2xl font-semibold tracking-normal text-white text-balance sm:text-3xl">
                 Sistema personal de libertad financiera
               </h1>
-              <p className="mt-2 max-w-2xl text-base leading-7 text-stone-300">
-                Un panel sobrio para medir tu numero x25, capturar decisiones y
-                convertir notas financieras en datos confirmados.
+              <p className="mt-1.5 max-w-[32ch] break-words text-sm leading-6 text-stone-300 sm:max-w-2xl">
+                Medí tu número x25, capturá decisiones y confirmá notas antes
+                de impactar datos.
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <SyncStatusPill
                   label={saveStatusLabel(saveStatus)}
                   tone={saveStatus === "error" ? "red" : "green"}
@@ -1091,31 +1107,53 @@ export function LibertadDashboard() {
                 </button>
               </div>
             </div>
-            <nav
-              className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-2xl lg:grid-cols-5"
-              aria-label="Secciones"
-            >
-              {modules.map((module) => (
-                <button
-                  key={module.label}
-                  aria-pressed={activeSection === module.id}
-                  className={`min-h-12 rounded-md border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
-                    activeSection === module.id
-                      ? "border-white bg-white text-stone-950 focus-visible:outline-emerald-300"
-                      : "border-white/15 bg-white/[0.06] text-stone-200 hover:border-white/30 hover:bg-white/10 focus-visible:outline-emerald-300"
-                  }`}
-                  type="button"
-                  onClick={() => selectSection(module.id)}
-                >
-                  <span className="block text-sm font-semibold">
+            <div className="grid w-full min-w-0 max-w-full gap-2.5 overflow-hidden lg:w-[540px]">
+              <nav
+                className="libertad-scroll flex w-full min-w-0 max-w-full gap-3 overflow-x-auto pb-1"
+                aria-label="Secciones principales"
+              >
+                {primaryModules.map((module) => (
+                  <button
+                    key={module.id}
+                    aria-pressed={activeSection === module.id}
+                    className={`shrink-0 border-b-2 px-0.5 py-1.5 text-sm font-semibold transition-colors focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300 ${
+                      activeSection === module.id
+                        ? "border-emerald-300 text-white"
+                        : "border-transparent text-stone-300 hover:text-white"
+                    }`}
+                    type="button"
+                    onClick={() => selectSection(module.id)}
+                  >
                     {module.label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="min-w-0 max-w-full overflow-hidden border-t border-white/10 pt-2">
+                <div className="flex w-full min-w-0 items-center gap-3">
+                  <span className="shrink-0 text-xs font-semibold text-stone-500">
+                    Avanzado
                   </span>
-                  <span className="mt-0.5 block text-xs opacity-75">
-                    {module.description}
-                  </span>
-                </button>
-              ))}
-            </nav>
+                  <div className="libertad-scroll flex min-w-0 max-w-full gap-3 overflow-x-auto pb-1">
+                    {secondaryModules.map((module) => (
+                      <button
+                        key={module.id}
+                        aria-pressed={activeSection === module.id}
+                        className={`shrink-0 border-b py-1 text-xs font-semibold transition-colors focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300 ${
+                          activeSection === module.id
+                            ? "border-stone-400 text-stone-200"
+                            : "border-transparent text-stone-500 hover:text-stone-300"
+                        }`}
+                        type="button"
+                        onClick={() => selectSection(module.id)}
+                      >
+                        {module.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -1124,25 +1162,6 @@ export function LibertadDashboard() {
           className="grid gap-5 scroll-mt-6"
           aria-live="polite"
         >
-          {activeSection === "notas" || activeSection === "configuracion" ? null : (
-            <section className="libertad-soft-panel rounded-lg p-4 sm:p-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-emerald-800">
-                    {activeModule.label}
-                  </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-stone-950 text-balance">
-                    {activeModule.description}
-                  </h2>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
-                  <MetricCard label="Atencion" value={primaryAttention} />
-                  <MetricCard label="Accion semanal" value={weeklyAction} />
-                </div>
-              </div>
-            </section>
-          )}
-
           {activeSection === "dashboard" ? (
             <>
               {isGuidedEmptyState ? (
@@ -1279,42 +1298,18 @@ export function LibertadDashboard() {
 
                 <aside className="rounded-lg border border-emerald-950 bg-[#11231d] p-5 text-white shadow-sm sm:p-6">
                   <p className="text-sm font-medium text-stone-300">
-                    Lectura del mes
+                    Proximos pasos
                   </p>
                   <p className="mt-4 text-3xl font-semibold text-balance">
-                    {isGuidedEmptyState
-                      ? "Empeza con datos reales"
-                      : metrics.completed >= 100
-                      ? "Meta alcanzada"
-                      : metrics.completed >= 50
-                        ? "La bola de nieve ya pesa"
-                        : "La maquina esta tomando forma"}
+                    {primaryAttention}
                   </p>
                   <p className="mt-4 text-sm leading-6 text-stone-300">
-                    {isGuidedEmptyState
-                      ? "Carga tus supuestos base en Config o confirma una nota. Hasta entonces, el dashboard evita mostrar ejemplos como si fueran datos financieros tuyos."
-                      : `Con un aporte de ${currencyFormatter.format(
-                          inputs.monthlyContribution,
-                        )} y un retorno anual esperado de ${percentFormatter.format(
-                          inputs.expectedAnnualReturn,
-                        )}%, el tablero estima ${yearsLabel.toLowerCase()} para llegar al numero x25.`}
+                    {weeklyAction}
                   </p>
                   <div className="mt-5 grid gap-2">
                     <SignalRow
                       label="Movimientos confirmados"
                       value={confirmedTransactions.length.toString()}
-                    />
-                    <SignalRow
-                      label="Impacto de notas"
-                      value={currencyFormatter.format(
-                        transactionSummary.netWorthDelta,
-                      )}
-                    />
-                    <SignalRow
-                      label="Gasto recurrente detectado"
-                      value={currencyFormatter.format(
-                        transactionSummary.recurringMonthlyExpenses,
-                      )}
                     />
                     <SignalRow
                       label="Margen mensual"
@@ -1323,9 +1318,25 @@ export function LibertadDashboard() {
                           ? "Sin movimientos"
                           : currencyFormatter.format(
                               financialMargin.availableMonthlyMargin,
-                            )
+                        )
                       }
                     />
+                  </div>
+                  <div className="mt-5 grid gap-2">
+                    <button
+                      className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-stone-950 transition-colors hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                      type="button"
+                      onClick={() => selectSection("notas")}
+                    >
+                      Capturar nota
+                    </button>
+                    <button
+                      className="inline-flex min-h-11 items-center justify-center rounded-md border border-white/20 bg-white/[0.06] px-4 text-sm font-semibold text-white transition-colors hover:border-white/35 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                      type="button"
+                      onClick={() => selectSection(primaryActionSection)}
+                    >
+                      Abrir paso sugerido
+                    </button>
                   </div>
                 </aside>
               </section>
@@ -1336,10 +1347,6 @@ export function LibertadDashboard() {
                     <h2 className="text-xl font-semibold text-stone-950">
                       Pulso financiero
                     </h2>
-                    <p className="mt-1 text-sm leading-6 text-stone-600">
-                      Lectura combinada de tus datos base y lo que ya
-                      confirmaste.
-                    </p>
                   </div>
                   <button
                     className="inline-flex h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
@@ -1366,28 +1373,9 @@ export function LibertadDashboard() {
                       effectiveInputs.investedCapital > 0
                         ? currencyFormatter.format(effectiveInputs.investedCapital)
                         : "Sin cargar"
-                    }
-                    tone="blue"
-                  />
-                  <MetricCard
-                    label="Gasto mensual deseado"
-                    value={
-                      effectiveInputs.desiredMonthlySpend > 0
-                        ? currencyFormatter.format(
-                            effectiveInputs.desiredMonthlySpend,
-                          )
-                        : "Sin cargar"
-                    }
-                  />
-                  <MetricCard
-                    label="Aporte mensual"
-                    value={
-                      inputs.monthlyContribution > 0
-                        ? currencyFormatter.format(inputs.monthlyContribution)
-                        : "Sin cargar"
-                    }
-                    tone="amber"
-                  />
+                      }
+                      tone="blue"
+                    />
                   <MetricCard
                     label="Margen mensual"
                     value={
@@ -1402,42 +1390,11 @@ export function LibertadDashboard() {
                         ? "red"
                         : financialMargin.state === "ajustado"
                           ? "amber"
-                          : "green"
+                      : "green"
                     }
                   />
                 </div>
-
-                <div className="libertad-soft-panel mt-6 rounded-md p-4">
-                  <p className="text-sm font-semibold text-stone-800">
-                    Regla x25 activa
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-stone-700">
-                    {hasFreedomTarget
-                      ? `Cada ${currencyFormatter.format(
-                          100,
-                        )} menos de gasto mensual baja tu numero de libertad en ${currencyFormatter.format(
-                          30000,
-                        )}.`
-                      : "Cuando cargues tu gasto mensual, esta regla muestra el impacto x25 sin usar datos de ejemplo."}
-                  </p>
-                </div>
               </section>
-
-              <WeeklyExecutionPanel
-                analysis={weeklyExecution}
-                onOpenNotes={() => selectSection("notas")}
-                onToggleItem={toggleWeeklyExecutionItem}
-              />
-
-              <FinancialMarginPanel
-                analysis={financialMargin}
-                compact
-                onOpenSettings={() => selectSection("configuracion")}
-              />
-
-              <FireLeversPanel summary={transactionSummary} />
-
-              <LifestyleInflationPanel analysis={lifestyleInflation} />
             </>
           ) : null}
 
@@ -1470,6 +1427,14 @@ export function LibertadDashboard() {
             <DebtLoadPanel analysis={confirmedDebtLoad} />
           ) : null}
 
+          {activeSection === "palancas" ? (
+            <FireLeversPanel summary={transactionSummary} />
+          ) : null}
+
+          {activeSection === "estilo" ? (
+            <LifestyleInflationPanel analysis={lifestyleInflation} />
+          ) : null}
+
           {activeSection === "margen" ? (
             <FinancialMarginPanel
               analysis={financialMargin}
@@ -1493,10 +1458,6 @@ export function LibertadDashboard() {
                     <h2 className="text-xl font-semibold text-stone-950">
                       Datos base
                     </h2>
-                    <p className="mt-1 text-sm leading-6 text-stone-600">
-                      Estos valores son tu escenario base. Las notas confirmadas
-                      se suman encima sin pisar tus supuestos.
-                    </p>
                   </div>
                   <p className="text-sm font-medium text-stone-500">
                     Guardado automatico
@@ -1541,11 +1502,6 @@ export function LibertadDashboard() {
                           </span>
                         ) : null}
                       </div>
-                      {field.help ? (
-                        <span className="text-xs leading-5 text-stone-500">
-                          {field.help}
-                        </span>
-                      ) : null}
                     </label>
                   ))}
                 </div>
@@ -1744,7 +1700,7 @@ function saveStatusLabel(status: SaveStatus) {
     return "Error al guardar";
   }
 
-  return "Sesion activa";
+  return "Sesión activa";
 }
 
 function SyncStatusPill({
@@ -2261,14 +2217,10 @@ function FixedMonthlyExpensesPanel({
           <h2 className="text-xl font-semibold text-stone-950">
             Gastos fijos mensuales
           </h2>
-          <p className="mt-1 text-sm leading-6 text-stone-600">
-            Registra gastos recurrentes para revisarlos aparte. Alimentan el
-            modulo de margen como supuestos, separados de las notas confirmadas.
-          </p>
         </div>
         <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
           <p className="text-xs font-medium text-stone-500">
-            Total activo informativo
+            Total gastos fijos mensuales
           </p>
           <p className="libertad-number mt-1 text-base font-semibold text-stone-950">
             {totalLabel}
