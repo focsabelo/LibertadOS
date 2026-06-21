@@ -307,7 +307,7 @@ export async function loadNotesData(
     supabase
       .from("financial_notes")
       .select(
-        "id, folder, title, body, created_at, updated_at, analysis, confirmed_transaction_ids, pending_reconfirmation",
+        "id, folder, currency, title, body, created_at, updated_at, analysis, confirmed_transaction_ids, pending_reconfirmation",
       )
       .eq("user_id", userId)
       .order("updated_at", { ascending: false }),
@@ -324,6 +324,7 @@ export async function loadNotesData(
     const note = {
       id: row.id,
       folder: row.folder,
+      currency: String(row.currency ?? "UYU"),
       title: row.title,
       body: row.body,
       createdAt: row.created_at,
@@ -335,7 +336,12 @@ export async function loadNotesData(
 
     return note.confirmedTransactionIds.length > 0
       ? note
-      : { ...note, analysis: analyzeFinancialNote(note.body) };
+      : {
+          ...note,
+          analysis: analyzeFinancialNote(note.body, new Date(), {
+            defaultCurrency: note.currency,
+          }),
+        };
   });
   const noteIds = new Set(notes.map((note) => note.id));
   const transactions = (transactionsResponse.data ?? [])
@@ -452,6 +458,7 @@ export async function upsertFinancialNote(
     id: note.id,
     user_id: userId,
     folder: note.folder,
+    currency: note.currency,
     title: note.title,
     body: note.body,
     created_at: note.createdAt,
@@ -569,6 +576,7 @@ function financialNoteRpcPayload(note: FinancialNote) {
   return {
     p_note_id: note.id,
     p_folder: note.folder,
+    p_currency: note.currency,
     p_title: note.title,
     p_body: note.body,
     p_created_at: note.createdAt,

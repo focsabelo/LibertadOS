@@ -14,6 +14,31 @@ export const DEFAULT_FREEDOM_INPUTS: FreedomInputs = {
   expectedAnnualReturn: 7,
 };
 
+export type EffectiveInputsTransactionSummary = {
+  netWorthDelta: number;
+  investedDelta: number;
+  recurringMonthlyExpenses: number;
+};
+
+export type ConfirmedSummaryTransaction = {
+  type: string;
+  amount: number;
+  date?: string;
+  category?: string;
+  recurring?: boolean;
+  intent?: string;
+  ignored?: boolean;
+  debt?: Partial<DebtAnalysis>;
+};
+
+export type ConfirmedTransactionsSummary = EffectiveInputsTransactionSummary & {
+  confirmedExpenses: number;
+  monthlyConfirmedExpenses: number;
+  annualConfirmedExpenses: number;
+  confirmedFireNumber: number;
+  coreMonthlyExpenses: Record<CoreExpenseCategory, number>;
+};
+
 export const CORE_EXPENSE_CATEGORIES = ["vivienda", "transporte", "comida"] as const;
 export const FIRE_REDUCTION_LEVELS = [10, 50, 100, 250] as const;
 export const DEFAULT_EMERGENCY_FUND_RATE = 0.05;
@@ -525,6 +550,111 @@ export function completionPercent(netWorth: number, target: number) {
   }
 
   return clampPercent((Math.max(0, netWorth) / target) * 100);
+}
+
+export function calculateEffectiveInputs(
+  inputs: FreedomInputs,
+  transactionSummary: EffectiveInputsTransactionSummary,
+): FreedomInputs {
+  return {
+    ...inputs,
+    netWorth: inputs.netWorth + transactionSummary.netWorthDelta,
+    investedCapital: inputs.investedCapital + transactionSummary.investedDelta,
+    desiredMonthlySpend:
+      inputs.desiredMonthlySpend + transactionSummary.recurringMonthlyExpenses,
+  };
+}
+
+export function confirmedTransactionsSummary(
+  transactions: ConfirmedSummaryTransaction[],
+): ConfirmedTransactionsSummary {
+  return transactions.reduce<ConfirmedTransactionsSummary>(
+    (summary, transaction) => {
+      const amount = Math.max(0, transaction.amount);
+
+      if (transaction.type === "gasto") {
+        summary.confirmedExpenses += amount;
+      }
+
+      if (transaction.type === "deuda") {
+        summary.netWorthDelta -= amount;
+        summary.confirmedExpenses += amount;
+      }
+
+      if (transaction.type === "ingreso" || transaction.type === "ahorro") {
+        summary.netWorthDelta += amount;
+      }
+
+      if (transaction.type === "inversion") {
+        summary.netWorthDelta += amount;
+        summary.investedDelta += amount;
+      }
+
+      if (transaction.type === "gasto" && transaction.recurring) {
+        summary.recurringMonthlyExpenses += amount;
+      }
+
+      if (transaction.type === "gasto") {
+        const monthlyExpense = monthlyEquivalentExpense(
+          amount,
+          Boolean(transaction.recurring),
+        );
+
+        summary.monthlyConfirmedExpenses += monthlyExpense;
+        summary.annualConfirmedExpenses += monthlyExpense * 12;
+        summary.confirmedFireNumber += freedomNumber(monthlyExpense);
+
+        if (
+          CORE_EXPENSE_CATEGORIES.includes(
+            transaction.category as CoreExpenseCategory,
+          )
+        ) {
+          summary.coreMonthlyExpenses[
+            transaction.category as CoreExpenseCategory
+          ] += monthlyExpense;
+        }
+      }
+
+      if (transaction.type === "deuda") {
+        const monthlyDebt = transaction.debt?.monthlyMarginImpact ?? 0;
+
+        if (monthlyDebt > 0) {
+          summary.recurringMonthlyExpenses += monthlyDebt;
+          summary.monthlyConfirmedExpenses += monthlyDebt;
+          summary.annualConfirmedExpenses +=
+            transaction.debt?.annualCost ?? monthlyDebt * 12;
+          summary.confirmedFireNumber +=
+            transaction.debt?.fireImpact ?? freedomNumber(monthlyDebt);
+
+          if (
+            CORE_EXPENSE_CATEGORIES.includes(
+              transaction.category as CoreExpenseCategory,
+            )
+          ) {
+            summary.coreMonthlyExpenses[
+              transaction.category as CoreExpenseCategory
+            ] += monthlyDebt;
+          }
+        }
+      }
+
+      return summary;
+    },
+    {
+      netWorthDelta: 0,
+      investedDelta: 0,
+      confirmedExpenses: 0,
+      recurringMonthlyExpenses: 0,
+      monthlyConfirmedExpenses: 0,
+      annualConfirmedExpenses: 0,
+      confirmedFireNumber: 0,
+      coreMonthlyExpenses: {
+        vivienda: 0,
+        transporte: 0,
+        comida: 0,
+      },
+    },
+  );
 }
 
 export function estimateYearsToTarget({

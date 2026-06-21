@@ -6,6 +6,8 @@ import {
   analyzeLifestyleInflation,
   analyzeFinancialMargin,
   analyzeConfirmedDebtLoad,
+  calculateEffectiveInputs,
+  confirmedTransactionsSummary,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
@@ -74,6 +76,16 @@ const cases: ExpectedCase[] = [
     intent: "real",
     confirmable: true,
     amount: 350,
+    category: "comida",
+    freedomImpact: 8750,
+  },
+  {
+    text: "Gaste 350 en comida",
+    type: "gasto",
+    intent: "real",
+    confirmable: true,
+    amount: 350,
+    currency: "UYU",
     category: "comida",
     freedomImpact: 8750,
   },
@@ -369,14 +381,18 @@ const cases: ExpectedCase[] = [
   },
 ];
 
-function firstItem(text: string) {
-  const analysis = analyzeFinancialNote(text, new Date("2026-06-18T12:00:00Z"));
+function firstItem(text: string, defaultCurrency = "USD") {
+  const analysis = analyzeFinancialNote(
+    text,
+    new Date("2026-06-18T12:00:00Z"),
+    { defaultCurrency },
+  );
   assert(analysis.length > 0, `Expected at least one detected item for "${text}"`);
   return analysis[0];
 }
 
 function runCase(expected: ExpectedCase) {
-  const item = firstItem(expected.text);
+  const item = firstItem(expected.text, expected.currency === "UYU" ? "UYU" : "USD");
 
   assertEqual(item.type, expected.type, expected.text, "type");
   assertEqual(item.intent, expected.intent, expected.text, "intent");
@@ -701,6 +717,34 @@ type FinancialMarginCase = {
   state: "fragil" | "ajustado" | "estable" | "fuerte";
   calmPointDistance: number;
   changeJobCapacity: "baja" | "limitada" | "moderada" | "alta";
+};
+
+type EffectiveInputsCase = {
+  name: string;
+  inputs: {
+    netWorth: number;
+    investedCapital: number;
+    desiredMonthlySpend: number;
+    monthlyContribution: number;
+    expectedAnnualReturn: number;
+  };
+  transactionSummary: {
+    netWorthDelta: number;
+    investedDelta: number;
+    recurringMonthlyExpenses: number;
+    expenseDelta: number;
+  };
+  netWorth: number;
+  investedCapital: number;
+  desiredMonthlySpend: number;
+};
+
+type TransactionSummaryCase = {
+  name: string;
+  transactions: Parameters<typeof confirmedTransactionsSummary>[0];
+  netWorthDelta: number;
+  confirmedExpenses: number;
+  monthlyConfirmedExpenses: number;
 };
 
 const debtLoadCases: DebtLoadCase[] = [
@@ -1134,8 +1178,58 @@ for (const testCase of financialMarginCases) {
   runFinancialMarginCase(testCase);
 }
 
+const effectiveInputsCases: EffectiveInputsCase[] = [
+  {
+    name: "Gastos confirmados no reducen patrimonio efectivo",
+    inputs: {
+      netWorth: 10000,
+      investedCapital: 3000,
+      desiredMonthlySpend: 1200,
+      monthlyContribution: 500,
+      expectedAnnualReturn: 7,
+    },
+    transactionSummary: {
+      netWorthDelta: 0,
+      investedDelta: 200,
+      recurringMonthlyExpenses: 150,
+      expenseDelta: 700,
+    },
+    netWorth: 10000,
+    investedCapital: 3200,
+    desiredMonthlySpend: 1350,
+  },
+];
+
+for (const testCase of effectiveInputsCases) {
+  runEffectiveInputsCase(testCase);
+}
+
+const transactionSummaryCases: TransactionSummaryCase[] = [
+  {
+    name: "Gasto confirmado no baja patrimonio",
+    transactions: [
+      {
+        type: "gasto",
+        amount: 700,
+        date: "2026-06-20",
+        category: "comida",
+        recurring: false,
+        intent: "real",
+        ignored: false,
+      },
+    ],
+    netWorthDelta: 0,
+    confirmedExpenses: 700,
+    monthlyConfirmedExpenses: 700 / 12,
+  },
+];
+
+for (const testCase of transactionSummaryCases) {
+  runTransactionSummaryCase(testCase);
+}
+
 console.log(
-  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}`,
+  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
 );
 
 function tx(
@@ -1629,5 +1723,44 @@ function runFinancialMarginCase(expected: FinancialMarginCase) {
     expected.changeJobCapacity,
     expected.name,
     "changeJobCapacity",
+  );
+}
+
+function runEffectiveInputsCase(expected: EffectiveInputsCase) {
+  const effectiveInputs = calculateEffectiveInputs(
+    expected.inputs,
+    expected.transactionSummary,
+  );
+
+  assertEqual(effectiveInputs.netWorth, expected.netWorth, expected.name, "netWorth");
+  assertEqual(
+    effectiveInputs.investedCapital,
+    expected.investedCapital,
+    expected.name,
+    "investedCapital",
+  );
+  assertEqual(
+    effectiveInputs.desiredMonthlySpend,
+    expected.desiredMonthlySpend,
+    expected.name,
+    "desiredMonthlySpend",
+  );
+}
+
+function runTransactionSummaryCase(expected: TransactionSummaryCase) {
+  const summary = confirmedTransactionsSummary(expected.transactions);
+
+  assertEqual(summary.netWorthDelta, expected.netWorthDelta, expected.name, "netWorthDelta");
+  assertEqual(
+    summary.confirmedExpenses,
+    expected.confirmedExpenses,
+    expected.name,
+    "confirmedExpenses",
+  );
+  assertAlmostEqual(
+    summary.monthlyConfirmedExpenses,
+    expected.monthlyConfirmedExpenses,
+    expected.name,
+    "monthlyConfirmedExpenses",
   );
 }

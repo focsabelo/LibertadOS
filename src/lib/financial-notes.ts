@@ -72,6 +72,7 @@ export type DetectedFinancialItem = {
 export type FinancialNote = {
   id: string;
   folder: FinancialFolder;
+  currency: string;
   title: string;
   body: string;
   createdAt: string;
@@ -98,6 +99,10 @@ export const NOTE_FOLDERS: FinancialFolder[] = [
   "Numero libertad financiera",
   "Macro / Liquidez",
 ];
+
+export type AnalyzeFinancialNoteOptions = {
+  defaultCurrency?: string;
+};
 
 const typeLabels: Record<FinancialType, string> = {
   gasto: "Gasto",
@@ -129,6 +134,7 @@ export function createEmptyNote(folder: FinancialFolder = "Captura rapida") {
   return {
     id: crypto.randomUUID(),
     folder,
+    currency: "UYU",
     title: "Nueva captura",
     body: "",
     createdAt: now,
@@ -138,10 +144,14 @@ export function createEmptyNote(folder: FinancialFolder = "Captura rapida") {
   } satisfies FinancialNote;
 }
 
-export function analyzeFinancialNote(text: string, today = new Date()) {
+export function analyzeFinancialNote(
+  text: string,
+  today = new Date(),
+  options: AnalyzeFinancialNoteOptions = {},
+) {
   const normalizedText = normalize(text);
   const date = detectDate(normalizedText, today);
-  const currency = detectCurrency(normalizedText);
+  const currency = detectCurrency(normalizedText, options.defaultCurrency);
   const incomeBase = detectIncomeBase(normalizedText);
   const items: DetectedFinancialItem[] = [];
 
@@ -175,7 +185,7 @@ export function analyzeFinancialNote(text: string, today = new Date()) {
         buildItem({
           id: `det-${items.length + 1}`,
           amount,
-          currency: detectCurrency(segment) || currency,
+          currency: detectCurrency(segment, currency),
           date,
           text: segment.trim(),
           normalizedText: normalizedSegmentContext,
@@ -193,7 +203,7 @@ export function analyzeFinancialNote(text: string, today = new Date()) {
         buildItem({
           id: `det-${items.length + 1}`,
           amount: 0,
-          currency: detectCurrency(segment) || currency,
+          currency: detectCurrency(segment, currency),
           date,
           text: segment.trim(),
           normalizedText: normalizedSegmentContext,
@@ -1435,14 +1445,24 @@ function detectDate(text: string, today: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function detectCurrency(text: string) {
+function detectCurrency(text: string, fallbackCurrency = "USD") {
   const normalized = normalize(text);
 
   if (hasAny(normalized, ["uyu", "pesos", "$u"])) {
     return "UYU";
   }
 
-  return "USD";
+  if (hasAny(normalized, ["usd", "dolares", "us$"])) {
+    return "USD";
+  }
+
+  return normalizeCurrencyCode(fallbackCurrency);
+}
+
+function normalizeCurrencyCode(currency?: string) {
+  const normalized = (currency ?? "USD").trim().toUpperCase();
+
+  return ["USD", "UYU", "ARS", "EUR"].includes(normalized) ? normalized : "USD";
 }
 
 function detectIncomeBase(text: string) {

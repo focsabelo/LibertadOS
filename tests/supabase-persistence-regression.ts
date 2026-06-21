@@ -191,6 +191,7 @@ assertEqual(
 const note: FinancialNote = {
   id: "00000000-0000-4000-8000-000000000201",
   folder: "Captura rapida",
+  currency: "UYU",
   title: "Gaste 100 en comida",
   body: "Gaste 100 en comida",
   createdAt: "2026-06-20T12:00:00.000Z",
@@ -284,6 +285,11 @@ async function runAsyncCases() {
     1,
     "confirm note sends transactions with the note",
   );
+  assertEqual(
+    confirmationSupabase.calls[0].args.p_currency,
+    "UYU",
+    "confirm note sends note currency",
+  );
 
   const failedConfirmationSupabase = createRpcOnlySupabase(
     new Error("network unavailable"),
@@ -315,6 +321,11 @@ async function runAsyncCases() {
     draftSupabase.calls[0].args.p_delete_confirmed_transactions,
     true,
     "draft RPC clears persisted transactions when reconfirmation is pending",
+  );
+  assertEqual(
+    draftSupabase.calls[0].args.p_currency,
+    "UYU",
+    "draft RPC sends note currency",
   );
 }
 
