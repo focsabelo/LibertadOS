@@ -6,15 +6,19 @@ import {
   analyzeLifestyleInflation,
   analyzeFinancialMargin,
   analyzeConfirmedDebtLoad,
+  analyzeInvestmentPolicy,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
+  DEFAULT_FREEDOM_INPUTS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
+  normalizeInvestmentPolicySettings,
   freedomNumber,
   type ConfirmedDebtLoadTransaction,
   type FinancialMarginFixedExpense,
   type FinancialMarginTransaction,
+  type InvestmentPolicyDecisionContext,
   type LifestyleInflationRisk,
   type LifestyleInflationTransaction,
   type TargetPortfolioSettings,
@@ -1164,6 +1168,87 @@ const portfolioCases: PortfolioCase[] = [
 for (const testCase of portfolioCases) {
   runPortfolioCase(testCase);
 }
+
+const normalizedPolicy = normalizeInvestmentPolicySettings({
+  noTouchRule: "",
+  strongRallyRule: "",
+  lastReviewedAt: "2026-06-21T12:00:00.000Z",
+  changeFriction: "wait_48h",
+});
+
+assertEqual(
+  normalizedPolicy.noTouchRule.length > 0,
+  true,
+  "policy normalization fills no-touch rule",
+  "noTouchRule",
+);
+assertEqual(
+  normalizedPolicy.strongRallyRule.length > 0,
+  true,
+  "policy normalization fills rally rule",
+  "strongRallyRule",
+);
+assertEqual(
+  normalizedPolicy.changeFriction,
+  "wait_48h",
+  "policy normalization preserves valid friction",
+  "changeFriction",
+);
+
+const basePolicyAnalysis = analyzeInvestmentPolicy({
+  portfolio: analyzeTargetPortfolio(DEFAULT_TARGET_PORTFOLIO_SETTINGS, []),
+});
+
+assertEqual(
+  basePolicyAnalysis.violatedRuleCount,
+  0,
+  "complete default policy has no violations",
+  "violatedRuleCount",
+);
+assertIncludes(
+  basePolicyAnalysis.rules.map((rule) => rule.id),
+  "no_touch_rule",
+  "policy analysis includes no-touch rule",
+  "rules",
+);
+
+const bitcoinHeavyPolicyAnalysis = analyzeInvestmentPolicy({
+  portfolio: analyzeTargetPortfolio(
+    DEFAULT_TARGET_PORTFOLIO_SETTINGS,
+    [portfolioTx("bitcoin", 1000)],
+  ),
+});
+
+assertIncludes(
+  bitcoinHeavyPolicyAnalysis.rules.map((rule) => rule.id),
+  "rebalance_bitcoin",
+  "bitcoin overweight creates policy warning",
+  "rules",
+);
+assertEqual(
+  bitcoinHeavyPolicyAnalysis.violatedRuleCount > 0,
+  true,
+  "bitcoin overweight is a high-priority policy violation",
+  "violatedRuleCount",
+);
+
+const hotDecisionPolicyContext: InvestmentPolicyDecisionContext = {
+  detectedType: "inversion_potencial",
+  category: "bitcoin",
+  emotionalSignals: ["fomo"],
+  riskFactors: [{ id: "senal emocional", severity: "media" }],
+};
+const hotDecisionPolicyAnalysis = analyzeInvestmentPolicy({
+  portfolio: analyzeTargetPortfolio(DEFAULT_TARGET_PORTFOLIO_SETTINGS, []),
+  decision: hotDecisionPolicyContext,
+});
+
+assertIncludes(
+  hotDecisionPolicyAnalysis.rules.map((rule) => rule.id),
+  "decision_48h",
+  "hot investment decision creates wait rule",
+  "rules",
+);
 
 const roadmapCases: WealthRoadmapCase[] = [
   {

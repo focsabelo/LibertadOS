@@ -320,6 +320,8 @@ export type TargetPortfolioSettings = {
   policy?: Partial<InvestmentPolicySettings>;
 };
 
+export type PolicyChangeFriction = "none" | "review" | "wait_48h";
+
 export type InvestmentPolicySettings = {
   monthlyContributionTarget: number;
   salaryInvestmentPercent: number;
@@ -327,10 +329,46 @@ export type InvestmentPolicySettings = {
   rebalanceTolerancePercent: number;
   rebalanceFrequency: "mensual" | "trimestral" | "semestral" | "anual";
   drawdownRule: string;
+  strongRallyRule: string;
   bitcoinRule: string;
   goldRule: string;
   individualStocksRule: string;
   realEstateRule: string;
+  noTouchRule: string;
+  lastReviewedAt?: string;
+  changeFriction: PolicyChangeFriction;
+};
+
+export type InvestmentPolicyRuleStatus = {
+  id: string;
+  label: string;
+  status: "alineada" | "advertencia" | "violada";
+  detail: string;
+};
+
+export type InvestmentPolicyWarning = {
+  id: string;
+  label: string;
+  severity: "media" | "alta";
+  action: string;
+};
+
+export type InvestmentPolicyDecisionContext = {
+  detectedType?: string;
+  category?: string;
+  emotionalSignals?: string[];
+  riskFactors?: { id: string; severity?: string }[];
+};
+
+export type InvestmentPolicyAnalysis = {
+  policy: InvestmentPolicySettings;
+  rules: InvestmentPolicyRuleStatus[];
+  activeWarnings: InvestmentPolicyWarning[];
+  violatedRuleCount: number;
+  warningRuleCount: number;
+  alignedRuleCount: number;
+  summary: string;
+  primaryAction: string;
 };
 
 export type TargetPortfolioAsset = {
@@ -476,10 +514,15 @@ export const DEFAULT_TARGET_PORTFOLIO_SETTINGS: TargetPortfolioSettings = {
     rebalanceTolerancePercent: 5,
     rebalanceFrequency: "trimestral",
     drawdownRule: "No vender por caidas de mercado sin esperar 48 horas.",
+    strongRallyRule: "No aumentar riesgo por euforia sin revisar la politica.",
     bitcoinRule: "Mantener BTC dentro del objetivo y no aumentar por FOMO.",
     goldRule: "Usar oro como proteccion, no como apuesta de rendimiento.",
     individualStocksRule: "Solo permitir acciones individuales fuera del plan base.",
     realEstateRule: "Evaluar inmuebles por flujo, deuda y margen mensual.",
+    noTouchRule:
+      "No tocar el plan por panico, FOMO o comparacion sin esperar 48 horas.",
+    lastReviewedAt: undefined,
+    changeFriction: "review",
   },
 };
 
@@ -1549,6 +1592,181 @@ export function analyzeTargetPortfolio(
   };
 }
 
+export function analyzeInvestmentPolicy({
+  portfolio,
+  decision,
+}: {
+  portfolio: TargetPortfolioAnalysis;
+  decision?: InvestmentPolicyDecisionContext;
+}): InvestmentPolicyAnalysis {
+  const policy = normalizeInvestmentPolicySettings(portfolio.policy);
+  const rules: InvestmentPolicyRuleStatus[] = [];
+  const warnings: InvestmentPolicyWarning[] = [];
+
+  function addRule(rule: InvestmentPolicyRuleStatus) {
+    rules.push(rule);
+
+    if (rule.status === "alineada") {
+      return;
+    }
+
+    warnings.push({
+      id: rule.id,
+      label: rule.label,
+      severity: rule.status === "violada" ? "alta" : "media",
+      action:
+        rule.status === "violada"
+          ? "Revisar la politica antes de actuar."
+          : "Verificar si la decision sigue dentro del plan.",
+    });
+  }
+
+  addRule(
+    policyNumberRule(
+      "monthly_contribution_target",
+      "Aporte mensual objetivo",
+      policy.monthlyContributionTarget,
+      "Definir un aporte mensual objetivo.",
+    ),
+  );
+  addRule(
+    policyNumberRule(
+      "salary_investment_percent",
+      "Porcentaje de salario",
+      policy.salaryInvestmentPercent,
+      "Definir que parte del ingreso se invierte.",
+    ),
+  );
+  addRule(
+    policyNumberRule(
+      "emergency_fund_months",
+      "Colchon objetivo",
+      policy.emergencyFundMonths,
+      "Definir cuantos meses de colchon proteger.",
+    ),
+  );
+  addRule(
+    policyNumberRule(
+      "rebalance_tolerance",
+      "Tolerancia de rebalanceo",
+      policy.rebalanceTolerancePercent,
+      "Definir tolerancia antes de rebalancear.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "drawdown_rule",
+      "Caidas fuertes",
+      policy.drawdownRule,
+      "Escribir regla ante caidas fuertes.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "strong_rally_rule",
+      "Subidas fuertes",
+      policy.strongRallyRule,
+      "Escribir regla ante subidas fuertes.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "bitcoin_rule",
+      "Bitcoin",
+      policy.bitcoinRule,
+      "Escribir regla para BTC.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "gold_rule",
+      "Oro",
+      policy.goldRule,
+      "Escribir regla para oro.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "individual_stocks_rule",
+      "Acciones individuales",
+      policy.individualStocksRule,
+      "Escribir regla para acciones individuales.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "real_estate_rule",
+      "Inmuebles",
+      policy.realEstateRule,
+      "Escribir regla para inmuebles.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "no_touch_rule",
+      "No tocar el plan",
+      policy.noTouchRule,
+      "Escribir regla para no cambiar el plan en caliente.",
+    ),
+  );
+
+  if (portfolio.totalCurrentAmount > 0) {
+    for (const asset of portfolio.assets) {
+      if (Math.abs(asset.imbalancePercent) <= policy.rebalanceTolerancePercent) {
+        continue;
+      }
+
+      addRule({
+        id: `rebalance_${asset.assetClass}`,
+        label: `Desbalance ${asset.label}`,
+        status: asset.assetClass === "bitcoin" ? "violada" : "advertencia",
+        detail: `${asset.label} esta fuera de la tolerancia definida.`,
+      });
+    }
+  }
+
+  if (decisionHasImpulse(decision)) {
+    addRule({
+      id: "decision_48h",
+      label: "Decision en caliente",
+      status: "advertencia",
+      detail:
+        "La decision tiene impulso, FOMO o comparacion; conviene esperar 48 horas.",
+    });
+  }
+
+  const violatedRuleCount = rules.filter(
+    (rule) => rule.status === "violada",
+  ).length;
+  const warningRuleCount = rules.filter(
+    (rule) => rule.status === "advertencia",
+  ).length;
+  const alignedRuleCount = rules.filter(
+    (rule) => rule.status === "alineada",
+  ).length;
+
+  return {
+    policy,
+    rules,
+    activeWarnings: warnings,
+    violatedRuleCount,
+    warningRuleCount,
+    alignedRuleCount,
+    summary:
+      violatedRuleCount > 0
+        ? "Hay reglas importantes fuera del plan."
+        : warningRuleCount > 0
+          ? "El plan tiene advertencias para revisar."
+          : "La politica esta escrita y operativa.",
+    primaryAction:
+      violatedRuleCount > 0
+        ? "Revisar politica antes de actuar."
+        : warningRuleCount > 0
+          ? "Revisar advertencias y esperar si hay impulso."
+          : "Mantener el plan y revisar periodicamente.",
+  };
+}
+
 export function analyzeBotOpera24hs(
   investment: BotOpera24hsInvestment,
 ): BotOpera24hsAnalysis {
@@ -1767,6 +1985,16 @@ export function normalizeInvestmentPolicySettings(
   )
       ? (settings.rebalanceFrequency as InvestmentPolicySettings["rebalanceFrequency"])
       : defaultPolicy.rebalanceFrequency;
+  const frictionValues: PolicyChangeFriction[] = [
+    "none",
+    "review",
+    "wait_48h",
+  ];
+  const changeFriction = frictionValues.includes(
+    settings.changeFriction as PolicyChangeFriction,
+  )
+    ? (settings.changeFriction as PolicyChangeFriction)
+    : defaultPolicy.changeFriction;
 
   return {
     monthlyContributionTarget: Math.max(
@@ -1786,13 +2014,84 @@ export function normalizeInvestmentPolicySettings(
         defaultPolicy.rebalanceTolerancePercent,
     ),
     rebalanceFrequency,
-    drawdownRule: settings.drawdownRule ?? defaultPolicy.drawdownRule,
-    bitcoinRule: settings.bitcoinRule ?? defaultPolicy.bitcoinRule,
-    goldRule: settings.goldRule ?? defaultPolicy.goldRule,
+    drawdownRule: normalizeTextSetting(
+      settings.drawdownRule,
+      defaultPolicy.drawdownRule,
+    ),
+    strongRallyRule: normalizeTextSetting(
+      settings.strongRallyRule,
+      defaultPolicy.strongRallyRule,
+    ),
+    bitcoinRule: normalizeTextSetting(
+      settings.bitcoinRule,
+      defaultPolicy.bitcoinRule,
+    ),
+    goldRule: normalizeTextSetting(settings.goldRule, defaultPolicy.goldRule),
     individualStocksRule:
-      settings.individualStocksRule ?? defaultPolicy.individualStocksRule,
-    realEstateRule: settings.realEstateRule ?? defaultPolicy.realEstateRule,
+      normalizeTextSetting(
+        settings.individualStocksRule,
+        defaultPolicy.individualStocksRule,
+      ),
+    realEstateRule: normalizeTextSetting(
+      settings.realEstateRule,
+      defaultPolicy.realEstateRule,
+    ),
+    noTouchRule: normalizeTextSetting(
+      settings.noTouchRule,
+      defaultPolicy.noTouchRule,
+    ),
+    lastReviewedAt: normalizeOptionalDate(settings.lastReviewedAt),
+    changeFriction,
   };
+}
+
+function policyNumberRule(
+  id: string,
+  label: string,
+  value: number,
+  missing: string,
+): InvestmentPolicyRuleStatus {
+  return normalizePositiveNumber(value) > 0
+    ? { id, label, status: "alineada", detail: "Regla definida." }
+    : { id, label, status: "violada", detail: missing };
+}
+
+function policyTextRule(
+  id: string,
+  label: string,
+  value: string,
+  missing: string,
+): InvestmentPolicyRuleStatus {
+  const normalizedValue = value.trim();
+
+  return normalizedValue.length > 0
+    ? { id, label, status: "alineada", detail: normalizedValue }
+    : { id, label, status: "violada", detail: missing };
+}
+
+function decisionHasImpulse(decision?: InvestmentPolicyDecisionContext) {
+  const signals = decision?.emotionalSignals ?? [];
+  const factors = decision?.riskFactors?.map((factor) => factor.id) ?? [];
+
+  return [...signals, ...factors].some((value) =>
+    ["impulso", "fomo", "comparacion", "senal emocional"].includes(value),
+  );
+}
+
+function normalizeTextSetting(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : fallback;
+}
+
+function normalizeOptionalDate(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
 function targetPortfolioDerivedAmounts(
