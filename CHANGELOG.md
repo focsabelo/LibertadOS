@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v1.9.0 - Politica Personal de Inversion
+
+* Nueva seccion Politica para revisar reglas de inversion antes de actuar.
+* La politica existente de cartera ahora muestra cumplimiento, advertencias y accion principal.
+* Reglas nuevas para subidas fuertes, no tocar el plan, ultima revision y friccion de cambios.
+* Modo Decision muestra advertencias de politica para inversiones, BTC, oro, inmuebles y decisiones con impulso/FOMO.
+* Cartera conserva asignacion objetivo y deriva advertencias desde la politica sin crear movimientos reales.
+
 ## v2.0.8 - Equivalente USD en gastos fijos
 
 * Total de gastos fijos mensuales muestra el equivalente USD cuando hay gastos activos en UYU y cotizacion disponible.

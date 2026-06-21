@@ -401,6 +401,14 @@ Reglas:
 * no permitir cambiar la política en caliente por pánico o FOMO sin advertencia;
 * separar plan de inversión de opinión macro.
 
+Estado:
+
+* vista dedicada de Politica implementada;
+* reglas activas, advertencias y violaciones visibles;
+* politica conectada con Cartera y Modo Decision;
+* cambios de politica no crean transacciones ni modifican datos confirmados;
+* persistencia reutiliza configuracion existente de cartera objetivo.
+
 ---
 
 ## v2.0.0 Margen Financiero - cerrado
@@ -567,7 +575,6 @@ Cada módulo debe responder:
 
 ## Prioridad recomendada
 
-1. v1.9.0 Política Personal de Inversión.
-2. v2.1.0 Reglas de Aumentos e Ingresos Extra.
-3. v2.2.0 Revisión Mensual.
+1. v2.1.0 Reglas de Aumentos e Ingresos Extra.
+2. v2.2.0 Revisión Mensual.
 
