@@ -28,10 +28,7 @@ import {
   inputClass,
   inputShellClass,
 } from "@/components/libertad-dashboard/form-styles";
-import {
-  SectionPlaceholder,
-  TargetPortfolioPanel,
-} from "@/components/libertad-dashboard/portfolio-panel";
+import { TargetPortfolioPanel } from "@/components/libertad-dashboard/portfolio-panel";
 import {
   MetricCard,
   SignalRow,
@@ -1490,14 +1487,6 @@ export function LibertadDashboard() {
             />
           ) : null}
 
-          {activeSection === "macro" ? (
-            <SectionPlaceholder
-              title="Macro queda aislado del tablero operativo."
-              body="El contexto externo podra informar decisiones, pero no debe dominar la conducta ni entrar como dato confirmado."
-              action="Revisar pulso financiero"
-              onAction={() => selectSection("dashboard")}
-            />
-          ) : null}
         </div>
       </div>
     </main>

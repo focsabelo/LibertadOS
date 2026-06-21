@@ -71,7 +71,6 @@ export type AppSection =
   | "deuda"
   | "semana"
   | "roadmap"
-  | "macro"
   | "palancas"
   | "estilo"
   | "configuracion";
@@ -149,11 +148,6 @@ export const secondaryModules: {
     id: "roadmap",
     label: "Roadmap",
     description: "Hitos patrimoniales",
-  },
-  {
-    id: "macro",
-    label: "Macro",
-    description: "Contexto externo",
   },
 ];
 

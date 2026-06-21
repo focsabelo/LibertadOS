@@ -144,7 +144,7 @@ Implementar:
 * pantalla dedicada de cartera;
 * pantalla dedicada de deuda;
 * pantalla dedicada de roadmap;
-* pantalla dedicada de macro;
+* separación del contexto macro fuera del flujo operativo;
 * pantalla dedicada de configuración.
 
 Estado:
@@ -152,7 +152,8 @@ Estado:
 * navegación interna por secciones implementada;
 * dashboard convertido en resumen operativo;
 * notas/captura, cartera, deuda y configuración separadas en vistas dedicadas;
-* decisiones, roadmap y macro tienen pantallas reservadas para los siguientes módulos;
+* decisiones y roadmap tienen pantallas reservadas para los siguientes módulos;
+* Macro se retiró de la navegación avanzada hasta que exista un uso operativo concreto;
 * editor de notas agrandado para captura prolongada;
 * bug de IDs duplicados en vistas por hash corregido;
 * verificado en desktop y mobile sin overflow horizontal.
@@ -465,6 +466,20 @@ Estado:
 * pantalla dedicada de Margen agregada a la navegacion;
 * resumen de margen agregado al dashboard operativo;
 * tests de margen financiero agregados.
+
+---
+
+## v2.0.9 Navegación avanzada - cerrado
+
+Objetivo:
+Mantener la navegación avanzada enfocada en módulos accionables y evitar secciones vacías que compitan con el sistema operativo financiero.
+
+Estado:
+
+* Macro ya no aparece en la navegación avanzada;
+* la aplicación no expone una pantalla reservada sin flujo operativo;
+* se agregó una regresión para evitar que Macro vuelva a aparecer en los módulos navegables;
+* el roadmap conserva Macro como riesgo/contexto externo, no como módulo activo.
 
 ---
 

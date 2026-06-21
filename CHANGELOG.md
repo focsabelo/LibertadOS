@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v2.0.9 - Navegacion avanzada
+
+* Avanzado ya no muestra la seccion Macro.
+
 ## v1.9.0 - Politica Personal de Inversion
 
 * Nueva seccion Politica para revisar reglas de inversion antes de actuar.
