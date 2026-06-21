@@ -62,8 +62,8 @@ Use `PRODUCT.md` as the product source of truth when product intent, scope, or t
 - Maintain accessible contrast, visible focus states, readable text, and responsive layouts.
 - Avoid unnecessary nested cards; use cards only for repeated items, framed tools, or meaningful groups.
 - Keep labels and copy practical, calm, and concise.
-- For significant UI, UX, layout, accessibility, responsive, chart, or visual polish work, consult the relevant frontend skills and use Impeccable when it materially helps.
-- For small style fixes, microcopy, instruction edits, and narrow bugs, do not run full frontend, Impeccable, browser, or detector workflows unless the change meaningfully affects the user experience.
+- For meaningful UI, UX, layout, navigation, responsive, accessibility, chart, or visual polish work, prefer the relevant project design skills: `redesign-existing-projects` before changing existing screens; `design-taste-frontend` for hierarchy, spacing, and component quality; `high-end-visual-design` for premium polish; `minimalist-ui` for dense, readable surfaces; `brandkit` for Libertad OS identity; `site-architecture` for routes/navigation; and `image-to-code` when implementing from screenshots or visual references.
+- Do not invoke heavy design workflows for small copy changes, narrow bug fixes, simple style tweaks, instruction edits, or exploratory work unless the change meaningfully affects the user experience.
 
 ## Workflow / Git Rules
 
