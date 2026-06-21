@@ -8,7 +8,11 @@ import {
   type DecisionModeRiskLevel,
   type DecisionModeRiskSeverity,
 } from "@/lib/decision-mode";
-import type { FreedomInputs } from "@/lib/finance";
+import {
+  analyzeInvestmentPolicy,
+  type FreedomInputs,
+  type TargetPortfolioAnalysis,
+} from "@/lib/finance";
 import {
   formatCurrencyAmount,
   numberFormatter,
@@ -20,12 +24,22 @@ const DEFAULT_DECISION_TEXT =
 const LOCAL_INTENTIONS_KEY = "libertad-os:decision-intentions";
 const LOCAL_DRAFTS_KEY = "libertad-os:decision-drafts";
 
-export function DecisionModePanel({ context }: { context: FreedomInputs }) {
+export function DecisionModePanel({
+  context,
+  portfolio,
+}: {
+  context: FreedomInputs;
+  portfolio: TargetPortfolioAnalysis;
+}) {
   const [decisionText, setDecisionText] = useState(DEFAULT_DECISION_TEXT);
   const [actionMessage, setActionMessage] = useState("");
   const analysis = useMemo(
     () => analyzeDecisionMode(decisionText, context),
     [context, decisionText],
+  );
+  const policyAnalysis = useMemo(
+    () => analyzeInvestmentPolicy({ portfolio, decision: analysis }),
+    [analysis, portfolio],
   );
   const hasText = decisionText.trim().length > 0;
 
@@ -225,6 +239,54 @@ export function DecisionModePanel({ context }: { context: FreedomInputs }) {
           <p className="mt-4 rounded-md border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">
             {analysis.roadmapImpact.label}
           </p>
+        </section>
+
+        <section className="libertad-surface rounded-lg p-5 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-stone-950">
+                Politica aplicable
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-stone-600">
+                Contrasta esta simulacion con tus reglas, sin confirmar nada.
+              </p>
+            </div>
+            <span
+              className={`inline-flex min-h-8 items-center rounded-md border px-3 text-xs font-semibold ${
+                policyAnalysis.violatedRuleCount > 0
+                  ? "border-red-200 bg-red-50 text-red-950"
+                  : policyAnalysis.warningRuleCount > 0
+                    ? "border-amber-200 bg-amber-50 text-amber-950"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-950"
+              }`}
+            >
+              {policyAnalysis.violatedRuleCount > 0
+                ? "Fuera del plan"
+                : policyAnalysis.warningRuleCount > 0
+                  ? "Revisar"
+                  : "Alineada"}
+            </span>
+          </div>
+          <p className="mt-3 rounded-md border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">
+            {policyAnalysis.primaryAction}
+          </p>
+          {policyAnalysis.activeWarnings.length > 0 ? (
+            <div className="mt-3 grid gap-2">
+              {policyAnalysis.activeWarnings.slice(0, 3).map((warning) => (
+                <div
+                  key={warning.id}
+                  className={
+                    warning.severity === "alta"
+                      ? "rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-950"
+                      : "rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"
+                  }
+                >
+                  <p className="font-semibold">{warning.label}</p>
+                  <p className="mt-1 leading-6">{warning.action}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">

@@ -9,7 +9,6 @@ import {
   analyzeInvestmentPolicy,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
-  DEFAULT_FREEDOM_INPUTS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,

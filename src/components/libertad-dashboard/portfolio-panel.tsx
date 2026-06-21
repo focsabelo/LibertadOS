@@ -1,8 +1,8 @@
 import {
   analyzeBotOpera24hs,
+  analyzeInvestmentPolicy,
   analyzeTargetPortfolio,
   type BotOpera24hsInvestment,
-  type InvestmentPolicySettings,
   type PortfolioAssetClass,
   type TargetPortfolioSettings,
 } from "@/lib/finance";
@@ -45,20 +45,17 @@ export function TargetPortfolioPanel({
   botAnalysis,
   botInvestment,
   manualAmounts,
-  policy,
   onBotFieldChange,
   onBotMonthlyResultChange,
   onBotMonthAdd,
   onBotMonthRemove,
   onManualAmountChange,
-  onPolicyChange,
   onTargetChange,
 }: {
   analysis: ReturnType<typeof analyzeTargetPortfolio>;
   botAnalysis: ReturnType<typeof analyzeBotOpera24hs>;
   botInvestment: BotOpera24hsInvestment;
   manualAmounts: TargetPortfolioSettings["manualAmounts"];
-  policy: InvestmentPolicySettings;
   onBotFieldChange: (
     key: keyof Omit<BotOpera24hsInvestment, "name" | "monthlyResults">,
     value: string,
@@ -71,10 +68,10 @@ export function TargetPortfolioPanel({
   onBotMonthAdd: () => void;
   onBotMonthRemove: (month: string) => void;
   onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
-  onPolicyChange: (key: keyof InvestmentPolicySettings, value: string) => void;
   onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
 }) {
   const largestImbalance = analysis.largestImbalance;
+  const policyAnalysis = analyzeInvestmentPolicy({ portfolio: analysis });
 
   return (
     <section className="libertad-surface rounded-lg p-5 sm:p-6">
@@ -145,6 +142,35 @@ export function TargetPortfolioPanel({
         onMonthlyResultChange={onBotMonthlyResultChange}
       />
 
+      <div className="mt-5 rounded-md border border-stone-200 bg-stone-50 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-stone-950">
+              Politica conectada
+            </p>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
+              La edicion completa vive en Politica. Esta cartera usa tolerancia,
+              BTC, oro e inmuebles para detectar desalineaciones.
+            </p>
+          </div>
+          <span
+            className={`inline-flex min-h-8 items-center rounded-md border px-3 text-xs font-semibold ${
+              policyAnalysis.violatedRuleCount > 0
+                ? "border-red-200 bg-red-50 text-red-950"
+                : policyAnalysis.warningRuleCount > 0
+                  ? "border-amber-200 bg-amber-50 text-amber-950"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-950"
+            }`}
+          >
+            {policyAnalysis.violatedRuleCount > 0
+              ? "Revisar politica"
+              : policyAnalysis.warningRuleCount > 0
+                ? "Con advertencias"
+                : "Alineada"}
+          </span>
+        </div>
+      </div>
+
       <div className="mt-5 grid gap-3">
         {analysis.assets.map((asset) => (
           <PortfolioAssetRow
@@ -156,8 +182,6 @@ export function TargetPortfolioPanel({
           />
         ))}
       </div>
-
-      <InvestmentPolicyPanel policy={policy} onPolicyChange={onPolicyChange} />
     </section>
   );
 }
@@ -460,150 +484,6 @@ function BotOpera24hsPanel({
         </div>
       </div>
     </section>
-  );
-}
-
-function InvestmentPolicyPanel({
-  policy,
-  onPolicyChange,
-}: {
-  policy: InvestmentPolicySettings;
-  onPolicyChange: (key: keyof InvestmentPolicySettings, value: string) => void;
-}) {
-  const numericFields: {
-    key: keyof InvestmentPolicySettings;
-    label: string;
-    prefix?: string;
-    suffix?: string;
-    step: string;
-  }[] = [
-    {
-      key: "monthlyContributionTarget",
-      label: "Aporte mensual objetivo",
-      prefix: "USD",
-      step: "100",
-    },
-    {
-      key: "salaryInvestmentPercent",
-      label: "Salario a invertir",
-      suffix: "%",
-      step: "1",
-    },
-    {
-      key: "emergencyFundMonths",
-      label: "Colchon objetivo",
-      suffix: "meses",
-      step: "1",
-    },
-    {
-      key: "rebalanceTolerancePercent",
-      label: "Tolerancia desbalance",
-      suffix: "pp",
-      step: "0.5",
-    },
-  ];
-  const ruleFields: {
-    key: keyof InvestmentPolicySettings;
-    label: string;
-  }[] = [
-    { key: "drawdownRule", label: "Caidas fuertes" },
-    { key: "bitcoinRule", label: "Bitcoin" },
-    { key: "goldRule", label: "Oro" },
-    { key: "individualStocksRule", label: "Acciones individuales" },
-    { key: "realEstateRule", label: "Inmuebles" },
-  ];
-
-  return (
-    <div className="mt-5 rounded-md border border-stone-200 bg-stone-50 p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-stone-950">
-            Politica personal de inversion
-          </h3>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-stone-600">
-            Reglas editables para que la cartera tenga criterio antes que
-            impulsos. Cambiarlas no crea movimientos.
-          </p>
-        </div>
-        <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700">
-          Plan, no opinion macro
-        </span>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {numericFields.map((field) => (
-          <label key={field.key} className="grid gap-2">
-            <span className="text-xs font-semibold text-stone-600">
-              {field.label}
-            </span>
-            <div className={inputShellClass}>
-              {field.prefix ? (
-                <span className="mr-2 text-sm font-semibold text-stone-500">
-                  {field.prefix}
-                </span>
-              ) : null}
-              <input
-                autoComplete="off"
-                className={inputClass}
-                inputMode="decimal"
-                min="0"
-                name={`policy-${field.key}`}
-                step={field.step}
-                type="number"
-                value={policy[field.key] as number}
-                onChange={(event) =>
-                  onPolicyChange(field.key, event.target.value)
-                }
-              />
-              {field.suffix ? (
-                <span className="ml-2 text-sm font-semibold text-stone-500">
-                  {field.suffix}
-                </span>
-              ) : null}
-            </div>
-          </label>
-        ))}
-      </div>
-
-      <label className="mt-4 grid gap-2 md:max-w-sm">
-        <span className="text-xs font-semibold text-stone-600">
-          Frecuencia de rebalanceo
-        </span>
-        <select
-          autoComplete="off"
-          className="libertad-field h-12 rounded-md bg-white px-3 text-sm font-semibold text-stone-950"
-          name="policy-rebalance-frequency"
-          value={policy.rebalanceFrequency}
-          onChange={(event) =>
-            onPolicyChange("rebalanceFrequency", event.target.value)
-          }
-        >
-          <option value="mensual">Mensual</option>
-          <option value="trimestral">Trimestral</option>
-          <option value="semestral">Semestral</option>
-          <option value="anual">Anual</option>
-        </select>
-      </label>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {ruleFields.map((field) => (
-          <label key={field.key} className="grid gap-2">
-            <span className="text-xs font-semibold text-stone-600">
-              {field.label}
-            </span>
-            <textarea
-              autoComplete="off"
-              className="libertad-field min-h-20 resize-y rounded-md bg-white px-3 py-2 text-sm leading-6 text-stone-900"
-              name={`policy-${field.key}`}
-              value={policy[field.key] as string}
-              onChange={(event) =>
-                onPolicyChange(field.key, event.target.value)
-              }
-            />
-          </label>
-        ))}
-      </div>
-    </div>
   );
 }
 

@@ -18,6 +18,7 @@ import {
 import { DecisionModePanel } from "@/components/libertad-dashboard/decision-mode-panel";
 import { FireLeversPanel } from "@/components/libertad-dashboard/fire-levers-panel";
 import { FixedMonthlyExpensesPanel } from "@/components/libertad-dashboard/fixed-monthly-expenses-panel";
+import { InvestmentPolicyPanel } from "@/components/libertad-dashboard/investment-policy-panel";
 import {
   currencyFormatter,
   numberFormatter,
@@ -650,6 +651,10 @@ export function LibertadDashboard() {
         },
       }),
     );
+  }
+
+  function markInvestmentPolicyReviewed() {
+    updateInvestmentPolicy("lastReviewedAt", new Date().toISOString());
   }
 
   function updateBotOperaField(
@@ -1340,14 +1345,21 @@ export function LibertadDashboard() {
               botAnalysis={botOperaAnalysis}
               botInvestment={botOperaInvestment}
               manualAmounts={portfolioSettings.manualAmounts}
-              policy={targetPortfolio.policy}
               onBotFieldChange={updateBotOperaField}
               onBotMonthlyResultChange={updateBotOperaMonthlyResult}
               onBotMonthAdd={addBotOperaMonth}
               onBotMonthRemove={removeBotOperaMonth}
               onManualAmountChange={updatePortfolioManualAmount}
-              onPolicyChange={updateInvestmentPolicy}
               onTargetChange={updatePortfolioTarget}
+            />
+          ) : null}
+
+          {activeSection === "politica" ? (
+            <InvestmentPolicyPanel
+              portfolio={targetPortfolio}
+              policy={targetPortfolio.policy}
+              onMarkReviewed={markInvestmentPolicyReviewed}
+              onPolicyChange={updateInvestmentPolicy}
             />
           ) : null}
 
@@ -1462,7 +1474,10 @@ export function LibertadDashboard() {
           ) : null}
 
           {activeSection === "decisiones" ? (
-            <DecisionModePanel context={effectiveInputs} />
+            <DecisionModePanel
+              context={effectiveInputs}
+              portfolio={targetPortfolio}
+            />
           ) : null}
 
           {activeSection === "roadmap" ? (
