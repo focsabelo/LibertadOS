@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## v2.0.8 - Equivalente USD en gastos fijos
+
+* Total de gastos fijos mensuales muestra el equivalente USD cuando hay gastos activos en UYU y cotizacion disponible.
+* Margen financiero destaca el margen estimado cuando hay ingreso mensual fijo estimado cargado en configuracion.
+* Margen disponible usa ingreso fijo estimado como fallback cuando todavia no hay ingreso confirmado del mes, sin sumar ambos.
+* Margen disponible positivo se muestra en verde aunque el estado general siga fragil por colchon o deuda.
+* Configuracion renombra el ingreso fijo estimado como ingreso base mensual para aclarar que alimenta el margen operativo.
+
+## v2.0.7 - Gastos fijos UYU en margen
+
+* Margen financiero convierte gastos fijos UYU activos a USD para que vivienda, transporte, comida y otros esenciales impacten el margen y la lectura de esenciales.
+
+## v2.0.6 - Ingreso fijo estimado
+
+* Datos base agrega ingreso mensual fijo estimado como supuesto separado del ingreso confirmado.
+* Margen financiero muestra ingreso fijo estimado y margen estimado sin contarlos como movimientos reales.
+* Aporte mensual aclara que representa lo que se planea invertir o separar, no el salario.
+
+## v2.0.5 - Equivalencia USD para notas UYU
+
+* Las notas consultan la cotizacion diaria USD/UYU de DolarAPI Uruguay.
+* Los items detectados en UYU muestran y guardan una equivalencia informativa en USD con tasa, fecha y fuente.
+* Margen financiero y resumenes en USD usan la equivalencia USD de movimientos UYU confirmados en vez de sumar pesos como dolares.
+* Nueva migracion Supabase para persistir la equivalencia USD en transacciones confirmadas.
+* Si la cotizacion no esta disponible, la captura y confirmacion de notas siguen funcionando sin bloquearse.
+
+## v1.8.0 - Modo Decision MVP
+
+* Nueva pantalla Decisiones para evaluar una decision antes de ejecutarla.
+* Entrada en lenguaje natural con deteccion basica de tipo, monto, moneda, cuotas, deuda/interes, categoria, intent, negacion y senales emocionales.
+* Lectura simulada de impacto mensual, impacto FIRE e impacto roadmap sin tocar datos confirmados.
+* Riesgo bajo, medio, alto o sin datos explicado con factores visibles simples.
+* Datos faltantes, checklist anti-error y acciones seguras: esperar 48 horas, guardar intencion local, convertir en borrador local, pedir mas datos o descartar.
+* Sin persistencia Supabase nueva, sin confirmacion real y sin cambios en formulas centrales.
+
 ## v2.0.4 - Notas en moneda local y patrimonio
 
 * Las notas nuevas usan UYU como moneda base y permiten elegir moneda por nota.

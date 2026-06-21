@@ -609,6 +609,7 @@ function transactionToRow(
     source_text: transaction.sourceText,
     income_increase: Boolean(transaction.incomeIncrease),
     ignored: Boolean(transaction.ignored),
+    usd_conversion: transaction.usdConversion ?? null,
     debt: transaction.debt ?? null,
     anti_error_review: transaction.antiErrorReview ?? null,
     confirmed_at: transaction.confirmedAt,
@@ -633,6 +634,8 @@ function transactionFromRow(row: JsonRecord): ConfirmedFinancialTransaction {
     sourceText: String(row.source_text ?? ""),
     incomeIncrease: Boolean(row.income_increase),
     ignored: Boolean(row.ignored),
+    usdConversion:
+      row.usd_conversion as ConfirmedFinancialTransaction["usdConversion"],
     debt: row.debt as ConfirmedFinancialTransaction["debt"],
     antiErrorReview:
       row.anti_error_review as ConfirmedFinancialTransaction["antiErrorReview"],

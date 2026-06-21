@@ -31,6 +31,12 @@ import {
   type FinancialType,
   type TransactionIntent,
 } from "../src/lib/financial-notes";
+import {
+  analyzeDecisionMode,
+  type DecisionModeAnalysis,
+  type DecisionModeRiskLevel,
+  type DecisionModeType,
+} from "../src/lib/decision-mode";
 
 type ExpectedCase = {
   text: string;
@@ -381,11 +387,19 @@ const cases: ExpectedCase[] = [
   },
 ];
 
-function firstItem(text: string, defaultCurrency = "USD") {
+function firstItem(
+  text: string,
+  defaultCurrency = "USD",
+  dailyUsdQuote?: {
+    uyuPerUsd: number;
+    date: string;
+    source: string;
+  },
+) {
   const analysis = analyzeFinancialNote(
     text,
     new Date("2026-06-18T12:00:00Z"),
-    { defaultCurrency },
+    { defaultCurrency, dailyUsdQuote },
   );
   assert(analysis.length > 0, `Expected at least one detected item for "${text}"`);
   return analysis[0];
@@ -441,6 +455,91 @@ function runCase(expected: ExpectedCase) {
   if (expected.debt) {
     assert(item.debt, `${expected.text}: expected debt analysis`);
     assertDebt(item, expected);
+  }
+}
+
+function runDecisionModeCase(expected: DecisionModeCase) {
+  const analysis = analyzeDecisionMode(expected.text, {
+    netWorth: 10000,
+    investedCapital: 3000,
+    estimatedMonthlyIncome: 0,
+    desiredMonthlySpend: 1200,
+    monthlyContribution: 500,
+    expectedAnnualReturn: 7,
+  });
+
+  assertEqual(analysis.detectedType, expected.type, expected.name, "detectedType");
+  assertEqual(analysis.intent, expected.intent, expected.name, "intent");
+  assertEqual(analysis.riskLevel, expected.riskLevel, expected.name, "riskLevel");
+
+  if (expected.amount !== undefined) {
+    assertEqual(analysis.amount, expected.amount, expected.name, "amount");
+  }
+
+  if (expected.currency !== undefined) {
+    assertEqual(analysis.currency, expected.currency, expected.name, "currency");
+  }
+
+  if (expected.category !== undefined) {
+    assertEqual(analysis.category, expected.category, expected.name, "category");
+  }
+
+  if (expected.installments !== undefined) {
+    assertEqual(
+      analysis.installments,
+      expected.installments,
+      expected.name,
+      "installments",
+    );
+  }
+
+  if (expected.monthlyImpact !== undefined) {
+    assertAlmostEqual(
+      analysis.estimatedMonthlyImpact,
+      expected.monthlyImpact,
+      expected.name,
+      "estimatedMonthlyImpact",
+    );
+  }
+
+  if (expected.fireImpact !== undefined) {
+    assertAlmostEqual(
+      analysis.estimatedFireImpact,
+      expected.fireImpact,
+      expected.name,
+      "estimatedFireImpact",
+    );
+  }
+
+  for (const field of expected.missingFields ?? []) {
+    assertIncludes(analysis.missingFields, field, expected.name, "missingFields");
+  }
+
+  for (const signal of expected.emotionalSignals ?? []) {
+    assertIncludes(
+      analysis.emotionalSignals,
+      signal,
+      expected.name,
+      "emotionalSignals",
+    );
+  }
+
+  for (const factor of expected.riskFactors ?? []) {
+    assertIncludes(
+      analysis.riskFactors.map((item) => item.id),
+      factor,
+      expected.name,
+      "riskFactors",
+    );
+  }
+
+  for (const action of expected.actions ?? []) {
+    assertIncludes(
+      analysis.availableActions,
+      action,
+      expected.name,
+      "availableActions",
+    );
   }
 }
 
@@ -525,6 +624,156 @@ function assert(condition: unknown, message: string): asserts condition {
 
 for (const testCase of cases) {
   runCase(testCase);
+}
+
+type DecisionModeCase = {
+  name: string;
+  text: string;
+  type: DecisionModeType;
+  intent: DecisionModeAnalysis["intent"];
+  riskLevel: DecisionModeRiskLevel;
+  amount?: number;
+  currency?: string;
+  category?: string;
+  installments?: number;
+  monthlyImpact?: number;
+  fireImpact?: number;
+  missingFields?: string[];
+  emotionalSignals?: string[];
+  riskFactors?: string[];
+  actions?: DecisionModeAnalysis["availableActions"][number][];
+};
+
+const decisionModeCases: DecisionModeCase[] = [
+  {
+    name: "Quiero comprar iPhone en cuotas queda como deuda potencial",
+    text: "quiero comprar un iPhone de USD 900 en 12 cuotas",
+    type: "deuda_potencial",
+    intent: "intencion",
+    riskLevel: "alto",
+    amount: 900,
+    currency: "USD",
+    category: "tecnologia",
+    installments: 12,
+    monthlyImpact: 75,
+    fireImpact: 22500,
+    missingFields: ["tasa anual"],
+    riskFactors: ["cuotas/financiacion", "tasa desconocida"],
+  },
+  {
+    name: "Compra potencial simple queda como intencion simulada",
+    text: "Quiero comprar un iPhone de USD 900 porque me lo merezco",
+    type: "gasto_potencial",
+    intent: "intencion",
+    riskLevel: "medio",
+    amount: 900,
+    currency: "USD",
+    category: "tecnologia",
+    monthlyImpact: 75,
+    fireImpact: 22500,
+    emotionalSignals: ["merecimiento"],
+    riskFactors: ["compra grande", "tecnologia/estatus", "senal emocional"],
+    actions: [
+      "esperar_48h",
+      "guardar_como_intencion",
+      "convertir_a_nota_borrador",
+      "descartar",
+    ],
+  },
+  {
+    name: "Deuda con cuotas muestra presion mensual y datos faltantes",
+    text: "Quiero financiar 1200 USD en 12 cuotas con tarjeta",
+    type: "deuda_potencial",
+    intent: "intencion",
+    riskLevel: "alto",
+    amount: 1200,
+    currency: "USD",
+    installments: 12,
+    monthlyImpact: 100,
+    fireImpact: 30000,
+    missingFields: ["tasa anual"],
+    riskFactors: ["cuotas/financiacion", "tasa desconocida"],
+    actions: ["pedir_mas_datos", "esperar_48h"],
+  },
+  {
+    name: "Negacion no genera impacto financiero",
+    text: "no compré el iPhone de USD 700",
+    type: "negacion",
+    intent: "negacion",
+    riskLevel: "bajo",
+    amount: 700,
+    currency: "USD",
+    monthlyImpact: 0,
+    fireImpact: 0,
+    actions: ["descartar"],
+  },
+  {
+    name: "Pensamiento de auto no queda como compra real",
+    text: "pensé en comprar un auto",
+    type: "gasto_potencial",
+    intent: "pensamiento",
+    riskLevel: "sin_datos",
+    missingFields: ["monto", "moneda"],
+    riskFactors: ["tecnologia/estatus"],
+  },
+  {
+    name: "Casi compra de tele queda como pensamiento",
+    text: "casi compro una tele",
+    type: "gasto_potencial",
+    intent: "pensamiento",
+    riskLevel: "sin_datos",
+    missingFields: ["monto", "moneda"],
+  },
+  {
+    name: "Prestamo ofrecido pide datos sin crear deuda real",
+    text: "me ofrecieron un préstamo",
+    type: "deuda_potencial",
+    intent: "pensamiento",
+    riskLevel: "sin_datos",
+    missingFields: ["monto", "moneda", "plazo", "tasa anual"],
+    actions: ["pedir_mas_datos", "esperar_48h"],
+  },
+  {
+    name: "Inversion ya ejecutada se lee real pero sigue simulada",
+    text: "invertí USD 500 en BTC",
+    type: "inversion_potencial",
+    intent: "real",
+    riskLevel: "medio",
+    amount: 500,
+    currency: "USD",
+    category: "bitcoin",
+    monthlyImpact: 41.67,
+    fireImpact: 12500,
+    riskFactors: ["inversion especulativa"],
+  },
+  {
+    name: "Voy a invertir BTC queda como intencion",
+    text: "voy a invertir USD 500 en BTC",
+    type: "inversion_potencial",
+    intent: "intencion",
+    riskLevel: "medio",
+    amount: 500,
+    currency: "USD",
+    category: "bitcoin",
+    riskFactors: ["inversion especulativa"],
+  },
+  {
+    name: "Compra real de laptop se distingue de intencion",
+    text: "compré una laptop de USD 800",
+    type: "gasto_potencial",
+    intent: "real",
+    riskLevel: "medio",
+    amount: 800,
+    currency: "USD",
+    category: "tecnologia",
+    monthlyImpact: 66.67,
+    fireImpact: 20000,
+    riskFactors: ["compra grande", "tecnologia/estatus"],
+  },
+];
+
+for (const testCase of decisionModeCases) {
+  runDecisionModeCase(testCase);
 }
 
 type LifestyleCase = {
@@ -705,6 +954,7 @@ type FinancialMarginCase = {
   name: string;
   transactions: FinancialMarginTransaction[];
   fixedExpenses: FinancialMarginFixedExpense[];
+  uyuPerUsdRate?: number;
   monthlyIncome: number;
   fixedMonthlyExpenses: number;
   variableMonthlyExpenses: number;
@@ -714,6 +964,8 @@ type FinancialMarginCase = {
   monthsCovered: number;
   savingRate: number;
   debtPressurePercent: number;
+  essentialExpenses?: number;
+  nonEssentialExpenses?: number;
   state: "fragil" | "ajustado" | "estable" | "fuerte";
   calmPointDistance: number;
   changeJobCapacity: "baja" | "limitada" | "moderada" | "alta";
@@ -724,6 +976,7 @@ type EffectiveInputsCase = {
   inputs: {
     netWorth: number;
     investedCapital: number;
+    estimatedMonthlyIncome: number;
     desiredMonthlySpend: number;
     monthlyContribution: number;
     expectedAnnualReturn: number;
@@ -1172,11 +1425,123 @@ const financialMarginCases: FinancialMarginCase[] = [
     calmPointDistance: 14000,
     changeJobCapacity: "baja",
   },
+  {
+    name: "Margen convierte gastos UYU confirmados a USD",
+    transactions: [
+      marginTx("gasto", 248, "2026-06-21", {
+        currency: "UYU",
+        usdConversion: {
+          originalAmount: 248,
+          originalCurrency: "UYU",
+          convertedAmount: 5.99,
+          convertedCurrency: "USD",
+          rate: 41.4,
+          date: "2026-06-21",
+          source: "DolarAPI Uruguay",
+        },
+      }),
+      marginTx("gasto", 130, "2026-06-21", {
+        currency: "UYU",
+        usdConversion: {
+          originalAmount: 130,
+          originalCurrency: "UYU",
+          convertedAmount: 3.14,
+          convertedCurrency: "USD",
+          rate: 41.4,
+          date: "2026-06-21",
+          source: "DolarAPI Uruguay",
+        },
+      }),
+    ],
+    fixedExpenses: [],
+    monthlyIncome: 0,
+    fixedMonthlyExpenses: 0,
+    variableMonthlyExpenses: 9.13,
+    debtMonthlyPayments: 0,
+    availableMonthlyMargin: -9.13,
+    emergencyFund: 0,
+    monthsCovered: 0,
+    savingRate: 0,
+    debtPressurePercent: 0,
+    state: "fragil",
+    calmPointDistance: 54.78,
+    changeJobCapacity: "baja",
+  },
+  {
+    name: "Margen convierte gastos fijos UYU esenciales a USD",
+    transactions: [marginTx("ingreso", 2000, "2026-06-02")],
+    fixedExpenses: [fixedMarginExpense("Mama", "vivienda", 4000, true, "UYU")],
+    uyuPerUsdRate: 40,
+    monthlyIncome: 2000,
+    fixedMonthlyExpenses: 100,
+    variableMonthlyExpenses: 0,
+    debtMonthlyPayments: 0,
+    availableMonthlyMargin: 1900,
+    emergencyFund: 0,
+    monthsCovered: 0,
+    savingRate: 95,
+    debtPressurePercent: 0,
+    essentialExpenses: 100,
+    nonEssentialExpenses: 0,
+    state: "fragil",
+    calmPointDistance: 600,
+    changeJobCapacity: "baja",
+  },
 ];
 
 for (const testCase of financialMarginCases) {
   runFinancialMarginCase(testCase);
 }
+
+const estimatedIncomeMargin = analyzeFinancialMargin({
+  transactions: [],
+  fixedExpenses: [fixedMarginExpense("Alquiler", "vivienda", 1200)],
+  estimatedMonthlyIncome: 3000,
+  today: new Date("2026-06-18T12:00:00Z"),
+});
+
+assertEqual(
+  estimatedIncomeMargin.monthlyIncome,
+  0,
+  "Ingreso fijo estimado no cuenta como ingreso confirmado",
+  "monthlyIncome",
+);
+assertEqual(
+  estimatedIncomeMargin.estimatedMonthlyIncome,
+  3000,
+  "Ingreso fijo estimado queda disponible como supuesto",
+  "estimatedMonthlyIncome",
+);
+assertEqual(
+  estimatedIncomeMargin.estimatedAvailableMonthlyMargin,
+  1800,
+  "Ingreso fijo estimado permite ver margen supuesto separado",
+  "estimatedAvailableMonthlyMargin",
+);
+assertEqual(
+  estimatedIncomeMargin.availableMonthlyMargin,
+  1800,
+  "Ingreso fijo estimado alimenta margen disponible si no hay ingreso confirmado",
+  "availableMonthlyMargin",
+);
+assertEqual(
+  estimatedIncomeMargin.marginIncomeSource,
+  "estimated",
+  "Margen disponible marca que usa ingreso estimado",
+  "marginIncomeSource",
+);
+assertEqual(
+  estimatedIncomeMargin.availableMonthlyMarginTone,
+  "green",
+  "Margen disponible positivo usa tono verde aunque falte colchon",
+  "availableMonthlyMarginTone",
+);
+assert(
+  estimatedIncomeMargin.signals.includes(
+    "Margen disponible usa ingreso fijo estimado hasta confirmar el sueldo del mes.",
+  ),
+  "Ingreso fijo estimado aparece como senal visible en margen disponible",
+);
 
 const effectiveInputsCases: EffectiveInputsCase[] = [
   {
@@ -1184,6 +1549,7 @@ const effectiveInputsCases: EffectiveInputsCase[] = [
     inputs: {
       netWorth: 10000,
       investedCapital: 3000,
+      estimatedMonthlyIncome: 4500,
       desiredMonthlySpend: 1200,
       monthlyContribution: 500,
       expectedAnnualReturn: 7,
@@ -1228,8 +1594,33 @@ for (const testCase of transactionSummaryCases) {
   runTransactionSummaryCase(testCase);
 }
 
+const uyuConversionItem = firstItem("Gaste UYU 1000 en comida", "UYU", {
+  uyuPerUsd: 40,
+  date: "2026-06-21",
+  source: "DolarAPI",
+});
+
+assertEqual(
+  uyuConversionItem.usdConversion?.convertedAmount,
+  25,
+  "UYU note item stores USD equivalent using the daily quote",
+  "usdConversion.convertedAmount",
+);
+assertEqual(
+  uyuConversionItem.usdConversion?.rate,
+  40,
+  "UYU note item stores the UYU per USD rate",
+  "usdConversion.rate",
+);
+assertEqual(
+  uyuConversionItem.usdConversion?.date,
+  "2026-06-21",
+  "UYU note item stores the quote date",
+  "usdConversion.date",
+);
+
 console.log(
-  `Parser regression tests passed: ${cases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
+  `Parser regression tests passed: ${cases.length}. Decision mode tests passed: ${decisionModeCases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
 );
 
 function tx(
@@ -1616,12 +2007,13 @@ function fixedMarginExpense(
   category: FinancialMarginFixedExpense["category"],
   monthlyAmount: number,
   active = true,
+  currency = "USD",
 ): FinancialMarginFixedExpense {
   return {
     name,
     category,
     monthlyAmount,
-    currency: "USD",
+    currency,
     active,
   };
 }
@@ -1674,6 +2066,7 @@ function runFinancialMarginCase(expected: FinancialMarginCase) {
   const analysis = analyzeFinancialMargin({
     transactions: expected.transactions,
     fixedExpenses: expected.fixedExpenses,
+    uyuPerUsdRate: expected.uyuPerUsdRate,
     today: new Date("2026-06-18T12:00:00Z"),
   });
 
@@ -1711,6 +2104,22 @@ function runFinancialMarginCase(expected: FinancialMarginCase) {
     expected.name,
     "debtPressurePercent",
   );
+  if (expected.essentialExpenses !== undefined) {
+    assertEqual(
+      analysis.essentialExpenses,
+      expected.essentialExpenses,
+      expected.name,
+      "essentialExpenses",
+    );
+  }
+  if (expected.nonEssentialExpenses !== undefined) {
+    assertEqual(
+      analysis.nonEssentialExpenses,
+      expected.nonEssentialExpenses,
+      expected.name,
+      "nonEssentialExpenses",
+    );
+  }
   assertEqual(analysis.state, expected.state, expected.name, "state");
   assertEqual(
     analysis.calmPointDistance,

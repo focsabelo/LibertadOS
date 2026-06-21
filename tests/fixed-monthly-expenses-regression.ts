@@ -3,6 +3,7 @@ import {
   fixedMonthlyExpenseDraftToRow,
   fixedMonthlyExpenseFromRow,
   fixedMonthlyExpenseToRow,
+  fixedMonthlyExpenseUsdEquivalent,
   summarizeActiveFixedExpenses,
 } from "../src/lib/fixed-monthly-expenses";
 
@@ -93,4 +94,10 @@ assert(
 assert(
   totals.some((total) => total.currency === "UYU" && total.amount === 42000),
   "active summary keeps UYU total",
+);
+
+assertEqual(
+  fixedMonthlyExpenseUsdEquivalent(totals, 42),
+  1015,
+  "USD equivalent combines USD totals and converted UYU totals",
 );

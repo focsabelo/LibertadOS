@@ -346,6 +346,15 @@ Reglas:
 * mostrar consecuencias y fricciones;
 * proteger al usuario de actuar por impulso.
 
+Estado:
+
+* pantalla dedicada de Decisiones implementada;
+* analizador `analyzeDecisionMode` agregado para tipo, monto, moneda, cuotas, deuda/interes, categoria, intent, negacion y senales emocionales;
+* impacto mensual, impacto FIRE e impacto roadmap mostrados como simulacion;
+* riesgo bajo, medio, alto o sin datos explicado con factores visibles;
+* acciones seguras implementadas: esperar 48 horas, guardar intencion local, convertir en borrador local, pedir mas datos o descartar;
+* sin persistencia Supabase nueva, sin confirmacion real y sin cambios automaticos en dashboard, patrimonio, deuda, cartera ni roadmap.
+
 ---
 
 ## v1.9.0 Política Personal de Inversión
@@ -558,9 +567,7 @@ Cada módulo debe responder:
 
 ## Prioridad recomendada
 
-1. v1.8.0 Modo Decisión.
-2. v1.9.0 Política Personal de Inversión.
-3. v2.0.0 Margen Financiero.
-4. v2.1.0 Reglas de Aumentos e Ingresos Extra.
-5. v2.2.0 Revisión Mensual.
+1. v1.9.0 Política Personal de Inversión.
+2. v2.1.0 Reglas de Aumentos e Ingresos Extra.
+3. v2.2.0 Revisión Mensual.
 

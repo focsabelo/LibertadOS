@@ -39,6 +39,22 @@ export type AntiErrorReview = {
   confirmableBlockReason?: string;
 };
 
+export type DailyUsdQuote = {
+  uyuPerUsd: number;
+  date: string;
+  source: string;
+};
+
+export type UsdConversion = {
+  originalAmount: number;
+  originalCurrency: "UYU";
+  convertedAmount: number;
+  convertedCurrency: "USD";
+  rate: number;
+  date: string;
+  source: string;
+};
+
 export type FinancialFolder =
   | "Captura rapida"
   | "Gastos"
@@ -65,6 +81,7 @@ export type DetectedFinancialItem = {
   sourceText: string;
   incomeIncrease?: boolean;
   ignored?: boolean;
+  usdConversion?: UsdConversion;
   debt?: DebtAnalysis;
   antiErrorReview?: AntiErrorReview;
 };
@@ -102,6 +119,7 @@ export const NOTE_FOLDERS: FinancialFolder[] = [
 
 export type AnalyzeFinancialNoteOptions = {
   defaultCurrency?: string;
+  dailyUsdQuote?: DailyUsdQuote;
 };
 
 const typeLabels: Record<FinancialType, string> = {
@@ -186,6 +204,7 @@ export function analyzeFinancialNote(
           id: `det-${items.length + 1}`,
           amount,
           currency: detectCurrency(segment, currency),
+          dailyUsdQuote: options.dailyUsdQuote,
           date,
           text: segment.trim(),
           normalizedText: normalizedSegmentContext,
@@ -204,6 +223,7 @@ export function analyzeFinancialNote(
           id: `det-${items.length + 1}`,
           amount: 0,
           currency: detectCurrency(segment, currency),
+          dailyUsdQuote: options.dailyUsdQuote,
           date,
           text: segment.trim(),
           normalizedText: normalizedSegmentContext,
@@ -230,6 +250,7 @@ export function analyzeFinancialNote(
           id: `det-${items.length + 1}`,
           amount,
           currency,
+          dailyUsdQuote: options.dailyUsdQuote,
           date,
           text: segment.trim(),
           normalizedText: `${normalizedSegmentContext} ${categoryHint}`,
@@ -295,7 +316,10 @@ export function isConfirmable(item: DetectedFinancialItem) {
   );
 }
 
-export function recalculateDetectedFinancialItem(item: DetectedFinancialItem) {
+export function recalculateDetectedFinancialItem(
+  item: DetectedFinancialItem,
+  options: { dailyUsdQuote?: DailyUsdQuote } = {},
+) {
   const normalizedText = normalize(item.sourceText);
   const impulse =
     item.impulse ||
@@ -316,12 +340,18 @@ export function recalculateDetectedFinancialItem(item: DetectedFinancialItem) {
     normalizedText,
     debt,
   });
+  const usdConversion = buildUsdConversion({
+    amount: item.amount,
+    currency: item.currency,
+    quote: options.dailyUsdQuote ?? quoteFromConversion(item.usdConversion),
+  });
 
   return {
     ...item,
     impulse,
     debt,
     freedomImpact,
+    usdConversion,
     antiErrorReview: buildAntiErrorReview({
       amount: item.amount,
       currency: item.currency,
@@ -340,6 +370,7 @@ function buildItem({
   id,
   amount,
   currency,
+  dailyUsdQuote,
   date,
   text,
   normalizedText,
@@ -348,6 +379,7 @@ function buildItem({
   id: string;
   amount: number;
   currency: string;
+  dailyUsdQuote?: DailyUsdQuote;
   date: string;
   text: string;
   normalizedText: string;
@@ -415,6 +447,11 @@ function buildItem({
     normalizedText,
     debt,
   });
+  const usdConversion = buildUsdConversion({
+    amount: effectiveAmount,
+    currency,
+    quote: dailyUsdQuote,
+  });
 
   return {
     id,
@@ -430,6 +467,7 @@ function buildItem({
     freedomImpact,
     sourceText: text || "Captura sin texto",
     incomeIncrease,
+    usdConversion,
     debt,
     antiErrorReview: buildAntiErrorReview({
       amount: effectiveAmount,
@@ -1552,6 +1590,55 @@ function parseAmount(value: string) {
   const parsed = Number(normalized);
 
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildUsdConversion({
+  amount,
+  currency,
+  quote,
+}: {
+  amount: number;
+  currency: string;
+  quote?: DailyUsdQuote;
+}): UsdConversion | undefined {
+  const rate = quote?.uyuPerUsd ?? 0;
+
+  if (
+    normalizeCurrencyCode(currency) !== "UYU" ||
+    amount <= 0 ||
+    !Number.isFinite(rate) ||
+    rate <= 0 ||
+    !quote?.date ||
+    !quote.source
+  ) {
+    return undefined;
+  }
+
+  return {
+    originalAmount: amount,
+    originalCurrency: "UYU",
+    convertedAmount: roundMoney(amount / rate),
+    convertedCurrency: "USD",
+    rate,
+    date: quote.date,
+    source: quote.source,
+  };
+}
+
+function quoteFromConversion(conversion?: UsdConversion): DailyUsdQuote | undefined {
+  if (!conversion) {
+    return undefined;
+  }
+
+  return {
+    uyuPerUsd: conversion.rate,
+    date: conversion.date,
+    source: conversion.source,
+  };
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function calculateFreedomImpact({

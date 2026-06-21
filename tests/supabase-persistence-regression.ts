@@ -36,6 +36,7 @@ const userId = "00000000-0000-4000-8000-000000000001";
 const inputs: FreedomInputs = {
   netWorth: 123,
   investedCapital: 45,
+  estimatedMonthlyIncome: 3000,
   desiredMonthlySpend: 67,
   monthlyContribution: 89,
   expectedAnnualReturn: 5,
@@ -52,6 +53,11 @@ const payload = createDashboardSettingsPayload({
 
 assertEqual(payload.user_id, userId, "dashboard payload carries user_id");
 assertEqual(payload.inputs.netWorth, 123, "dashboard payload carries inputs");
+assertEqual(
+  payload.inputs.estimatedMonthlyIncome,
+  3000,
+  "dashboard payload carries estimated income assumption",
+);
 assertEqual(
   payload.roadmap_simulated_contribution,
   999,
@@ -83,6 +89,11 @@ assertEqual(
   "default monthly spend starts empty",
 );
 assertEqual(
+  defaults.inputs.estimatedMonthlyIncome,
+  0,
+  "default estimated monthly income starts empty",
+);
+assertEqual(
   defaults.inputs.monthlyContribution,
   0,
   "default monthly contribution starts empty",
@@ -92,6 +103,7 @@ const normalized = normalizeDashboardData({
   settings: {
     inputs: {
       netWorth: 10,
+      estimatedMonthlyIncome: 2400,
     },
   },
   portfolio: {
@@ -105,6 +117,11 @@ const normalized = normalizeDashboardData({
 });
 
 assertEqual(normalized.inputs.netWorth, 10, "partial settings override defaults");
+assertEqual(
+  normalized.inputs.estimatedMonthlyIncome,
+  2400,
+  "partial settings preserve estimated monthly income",
+);
 assertEqual(
   normalized.portfolioSettings.targets.etf_usa,
   60,
@@ -217,6 +234,15 @@ const transaction: ConfirmedFinancialTransaction = {
   freedomImpact: 2500,
   sourceText: "Gaste 100 en comida",
   ignored: false,
+  usdConversion: {
+    originalAmount: 100,
+    originalCurrency: "UYU",
+    convertedAmount: 2.5,
+    convertedCurrency: "USD",
+    rate: 40,
+    date: "2026-06-20",
+    source: "DolarAPI Uruguay",
+  },
   confirmedAt: "2026-06-20T12:02:00.000Z",
 };
 
@@ -284,6 +310,15 @@ async function runAsyncCases() {
     (confirmationSupabase.calls[0].args.p_transactions as unknown[]).length,
     1,
     "confirm note sends transactions with the note",
+  );
+  assertEqual(
+    (
+      confirmationSupabase.calls[0].args.p_transactions as {
+        usd_conversion?: unknown;
+      }[]
+    )[0].usd_conversion instanceof Object,
+    true,
+    "confirm note sends USD conversion metadata",
   );
   assertEqual(
     confirmationSupabase.calls[0].args.p_currency,

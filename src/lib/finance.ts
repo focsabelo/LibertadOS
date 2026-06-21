@@ -1,6 +1,7 @@
 export type FreedomInputs = {
   netWorth: number;
   investedCapital: number;
+  estimatedMonthlyIncome: number;
   desiredMonthlySpend: number;
   monthlyContribution: number;
   expectedAnnualReturn: number;
@@ -9,6 +10,7 @@ export type FreedomInputs = {
 export const DEFAULT_FREEDOM_INPUTS: FreedomInputs = {
   netWorth: 0,
   investedCapital: 0,
+  estimatedMonthlyIncome: 0,
   desiredMonthlySpend: 0,
   monthlyContribution: 0,
   expectedAnnualReturn: 7,
@@ -23,11 +25,13 @@ export type EffectiveInputsTransactionSummary = {
 export type ConfirmedSummaryTransaction = {
   type: string;
   amount: number;
+  currency?: string;
   date?: string;
   category?: string;
   recurring?: boolean;
   intent?: string;
   ignored?: boolean;
+  usdConversion?: UsdConvertedAmount;
   debt?: Partial<DebtAnalysis>;
 };
 
@@ -95,11 +99,13 @@ export type DebtAnalysis = {
 export type LifestyleInflationTransaction = {
   type: string;
   amount: number;
+  currency?: string;
   date: string;
   category?: string;
   recurring?: boolean;
   intent?: string;
   ignored?: boolean;
+  usdConversion?: UsdConvertedAmount;
   antiErrorReview?: {
     applies?: boolean;
     signals?: string[];
@@ -165,11 +171,13 @@ export type ConfirmedDebtLoadAnalysis = {
 export type FinancialMarginTransaction = {
   type: string;
   amount: number;
+  currency?: string;
   date: string;
   category?: string;
   recurring?: boolean;
   intent?: string;
   ignored?: boolean;
+  usdConversion?: UsdConvertedAmount;
   debt?: Partial<DebtAnalysis>;
 };
 
@@ -184,10 +192,14 @@ export type FinancialMarginFixedExpense = {
 export type FinancialMarginAnalysis = {
   monthKey: string;
   monthlyIncome: number;
+  estimatedMonthlyIncome: number;
+  marginIncomeSource: "confirmed" | "estimated" | "none";
+  availableMonthlyMarginTone: "green" | "red";
   fixedMonthlyExpenses: number;
   variableMonthlyExpenses: number;
   debtMonthlyPayments: number;
   availableMonthlyMargin: number;
+  estimatedAvailableMonthlyMargin: number;
   emergencyFund: number;
   monthlyBurnRate: number;
   monthsCovered: number;
@@ -231,12 +243,14 @@ export type WeeklyExecutionReview = {
 export type WeeklyExecutionTransaction = {
   type: string;
   amount: number;
+  currency?: string;
   date: string;
   category?: string;
   recurring?: boolean;
   intent?: string;
   ignored?: boolean;
   impulse?: boolean;
+  usdConversion?: UsdConvertedAmount;
   debt?: {
     monthlyMarginImpact?: number;
     risk?: string;
@@ -246,6 +260,16 @@ export type WeeklyExecutionTransaction = {
     signals?: string[];
     detectedEnemies?: string[];
   };
+};
+
+export type UsdConvertedAmount = {
+  originalAmount?: number;
+  originalCurrency?: string;
+  convertedAmount?: number;
+  convertedCurrency?: string;
+  rate?: number;
+  date?: string;
+  source?: string;
 };
 
 export type WeeklyExecutionAnalysisItem = WeeklyExecutionItem & {
@@ -570,7 +594,7 @@ export function confirmedTransactionsSummary(
 ): ConfirmedTransactionsSummary {
   return transactions.reduce<ConfirmedTransactionsSummary>(
     (summary, transaction) => {
-      const amount = Math.max(0, transaction.amount);
+      const amount = transactionAmountForUsdAnalysis(transaction);
 
       if (transaction.type === "gasto") {
         summary.confirmedExpenses += amount;
@@ -616,15 +640,20 @@ export function confirmedTransactionsSummary(
       }
 
       if (transaction.type === "deuda") {
-        const monthlyDebt = transaction.debt?.monthlyMarginImpact ?? 0;
+        const monthlyDebt = transactionValueForUsdAnalysis(
+          transaction,
+          transaction.debt?.monthlyMarginImpact ?? 0,
+        );
 
         if (monthlyDebt > 0) {
           summary.recurringMonthlyExpenses += monthlyDebt;
           summary.monthlyConfirmedExpenses += monthlyDebt;
-          summary.annualConfirmedExpenses +=
-            transaction.debt?.annualCost ?? monthlyDebt * 12;
-          summary.confirmedFireNumber +=
-            transaction.debt?.fireImpact ?? freedomNumber(monthlyDebt);
+          summary.annualConfirmedExpenses += transaction.debt?.annualCost
+            ? transactionValueForUsdAnalysis(transaction, transaction.debt.annualCost)
+            : monthlyDebt * 12;
+          summary.confirmedFireNumber += transaction.debt?.fireImpact
+            ? transactionValueForUsdAnalysis(transaction, transaction.debt.fireImpact)
+            : freedomNumber(monthlyDebt);
 
           if (
             CORE_EXPENSE_CATEGORIES.includes(
@@ -1003,11 +1032,15 @@ export function analyzeFinancialMargin({
   fixedExpenses = [],
   today = new Date(),
   calmPointMonths = 6,
+  estimatedMonthlyIncome = 0,
+  uyuPerUsdRate,
 }: {
   transactions: FinancialMarginTransaction[];
   fixedExpenses?: FinancialMarginFixedExpense[];
   today?: Date;
   calmPointMonths?: number;
+  estimatedMonthlyIncome?: number;
+  uyuPerUsdRate?: number;
 }): FinancialMarginAnalysis {
   const monthKey = toMonthKey(today);
   const realTransactions = transactions.filter(isRealFinancialMarginTransaction);
@@ -1015,11 +1048,11 @@ export function analyzeFinancialMargin({
     (transaction) => toMonthKey(transaction.date) === monthKey,
   );
   const fixedAssumptions = fixedExpenses.reduce((total, expense) => {
-    if (expense.active === false || normalizeCurrencyCode(expense.currency) !== "USD") {
+    if (expense.active === false) {
       return total;
     }
 
-    return total + normalizePositiveNumber(expense.monthlyAmount);
+    return total + fixedExpenseAmountForUsdAnalysis(expense, uyuPerUsdRate);
   }, 0);
   const confirmedRecurringExpenses = currentMonthTransactions.reduce(
     (total, transaction) => {
@@ -1027,7 +1060,7 @@ export function analyzeFinancialMargin({
         return total;
       }
 
-      return total + normalizePositiveNumber(transaction.amount);
+      return total + transactionAmountForUsdAnalysis(transaction);
     },
     0,
   );
@@ -1042,7 +1075,7 @@ export function analyzeFinancialMargin({
         return total;
       }
 
-      return total + normalizePositiveNumber(transaction.amount);
+      return total + transactionAmountForUsdAnalysis(transaction);
     },
     0,
   );
@@ -1051,25 +1084,31 @@ export function analyzeFinancialMargin({
       return total;
     }
 
-    return total + normalizePositiveNumber(transaction.debt?.monthlyMarginImpact ?? 0);
+    return (
+      total +
+      transactionValueForUsdAnalysis(
+        transaction,
+        transaction.debt?.monthlyMarginImpact ?? 0,
+      )
+    );
   }, 0);
   const monthlyIncome = currentMonthTransactions.reduce((total, transaction) => {
     if (transaction.type !== "ingreso") {
       return total;
     }
 
-    return total + normalizePositiveNumber(transaction.amount);
+    return total + transactionAmountForUsdAnalysis(transaction);
   }, 0);
   const emergencyFund = realTransactions.reduce((total, transaction) => {
     if (transaction.type !== "ahorro" || !isEmergencyFundCategory(transaction.category)) {
       return total;
     }
 
-    return total + normalizePositiveNumber(transaction.amount);
+    return total + transactionAmountForUsdAnalysis(transaction);
   }, 0);
   const essentialExpenses =
     debtMonthlyPayments +
-    sumFixedExpensesByEssentialCategory(fixedExpenses) +
+    sumFixedExpensesByEssentialCategory(fixedExpenses, uyuPerUsdRate) +
     currentMonthTransactions.reduce((total, transaction) => {
       if (
         transaction.type !== "gasto" ||
@@ -1078,24 +1117,42 @@ export function analyzeFinancialMargin({
         return total;
       }
 
-      return total + normalizePositiveNumber(transaction.amount);
+      return total + transactionAmountForUsdAnalysis(transaction);
     }, 0);
   const totalOutflow =
     fixedMonthlyExpenses + variableMonthlyExpenses + debtMonthlyPayments;
   const nonEssentialExpenses = Math.max(0, totalOutflow - essentialExpenses);
-  const availableMonthlyMargin = monthlyIncome - totalOutflow;
+  const normalizedEstimatedMonthlyIncome =
+    normalizePositiveNumber(estimatedMonthlyIncome);
+  const marginMonthlyIncome =
+    monthlyIncome > 0 ? monthlyIncome : normalizedEstimatedMonthlyIncome;
+  const marginIncomeSource =
+    monthlyIncome > 0
+      ? "confirmed"
+      : normalizedEstimatedMonthlyIncome > 0
+        ? "estimated"
+        : "none";
+  const availableMonthlyMargin = marginMonthlyIncome - totalOutflow;
+  const availableMonthlyMarginTone = financialMarginAvailableTone({
+    availableMonthlyMargin,
+    marginMonthlyIncome,
+  });
+  const estimatedAvailableMonthlyMargin =
+    normalizedEstimatedMonthlyIncome - totalOutflow;
   const monthsCovered =
     totalOutflow > 0 ? roundToTwo(emergencyFund / totalOutflow) : 0;
   const savingRate =
-    monthlyIncome > 0 ? roundToTwo((availableMonthlyMargin / monthlyIncome) * 100) : 0;
+    marginMonthlyIncome > 0
+      ? roundToTwo((availableMonthlyMargin / marginMonthlyIncome) * 100)
+      : 0;
   const debtPressurePercent =
-    monthlyIncome > 0
-      ? roundToTwo((debtMonthlyPayments / monthlyIncome) * 100)
+    marginMonthlyIncome > 0
+      ? roundToTwo((debtMonthlyPayments / marginMonthlyIncome) * 100)
       : 0;
   const calmPointAmount = totalOutflow * Math.max(0, calmPointMonths);
   const calmPointDistance = Math.max(0, calmPointAmount - emergencyFund);
   const state = financialMarginState({
-    monthlyIncome,
+    monthlyIncome: marginMonthlyIncome,
     availableMonthlyMargin,
     savingRate,
     monthsCovered,
@@ -1103,7 +1160,7 @@ export function analyzeFinancialMargin({
   });
   const changeJobCapacity = marginChangeJobCapacity(monthsCovered);
   const paycheckDependency = marginPaycheckDependency({
-    monthlyIncome,
+    monthlyIncome: marginMonthlyIncome,
     availableMonthlyMargin,
     monthsCovered,
   });
@@ -1111,10 +1168,14 @@ export function analyzeFinancialMargin({
   return {
     monthKey,
     monthlyIncome,
+    estimatedMonthlyIncome: normalizedEstimatedMonthlyIncome,
+    marginIncomeSource,
+    availableMonthlyMarginTone,
     fixedMonthlyExpenses,
     variableMonthlyExpenses,
     debtMonthlyPayments,
     availableMonthlyMargin,
+    estimatedAvailableMonthlyMargin,
     emergencyFund,
     monthlyBurnRate: totalOutflow,
     monthsCovered,
@@ -1129,6 +1190,8 @@ export function analyzeFinancialMargin({
     paycheckDependency,
     signals: financialMarginSignals({
       monthlyIncome,
+      estimatedMonthlyIncome: normalizedEstimatedMonthlyIncome,
+      marginIncomeSource,
       availableMonthlyMargin,
       monthsCovered,
       debtPressurePercent,
@@ -1159,7 +1222,7 @@ export function analyzeWeeklyExecution({
       return total;
     }
 
-    return total + Math.max(0, transaction.amount);
+    return total + transactionAmountForUsdAnalysis(transaction);
   }, 0);
   const weekSavings = weekIncome - weekExpenses;
   const savingRate = weekIncome > 0 ? (weekSavings / weekIncome) * 100 : 0;
@@ -1229,7 +1292,9 @@ function sumTransactionsByType(
 ) {
   return transactions.reduce(
     (total, transaction) =>
-      transaction.type === type ? total + Math.max(0, transaction.amount) : total,
+      transaction.type === type
+        ? total + transactionAmountForUsdAnalysis(transaction)
+        : total,
     0,
   );
 }
@@ -1937,8 +2002,11 @@ function summarizeLifestyleMonth(
 
     const amount =
       transaction.type === "deuda" && transaction.debt?.monthlyMarginImpact
-        ? Math.max(0, transaction.debt.monthlyMarginImpact)
-        : Math.max(0, transaction.amount);
+        ? transactionValueForUsdAnalysis(
+            transaction,
+            transaction.debt.monthlyMarginImpact,
+          )
+        : transactionAmountForUsdAnalysis(transaction);
 
     if (transaction.type === "ingreso") {
       summary.income += amount;
@@ -1993,6 +2061,71 @@ function normalizeCurrencyCode(currency?: string) {
   return (currency ?? "USD").trim().toUpperCase();
 }
 
+function transactionAmountForUsdAnalysis(transaction: {
+  amount: number;
+  currency?: string;
+  usdConversion?: UsdConvertedAmount;
+}) {
+  return transactionValueForUsdAnalysis(transaction, transaction.amount);
+}
+
+function transactionValueForUsdAnalysis(
+  transaction: {
+    currency?: string;
+    usdConversion?: UsdConvertedAmount;
+  },
+  value: number,
+) {
+  const amount = normalizePositiveNumber(value);
+  const currency = normalizeCurrencyCode(transaction.currency);
+
+  if (currency === "USD") {
+    return amount;
+  }
+
+  if (currency === "UYU") {
+    const conversion = transaction.usdConversion;
+    const convertedCurrency = normalizeCurrencyCode(conversion?.convertedCurrency);
+
+    if (
+      convertedCurrency === "USD" &&
+      Number.isFinite(conversion?.convertedAmount) &&
+      Number.isFinite(conversion?.originalAmount) &&
+      conversion?.originalAmount === amount
+    ) {
+      return normalizePositiveNumber(conversion.convertedAmount ?? 0);
+    }
+
+    if (Number.isFinite(conversion?.rate) && (conversion?.rate ?? 0) > 0) {
+      return roundToTwo(amount / (conversion?.rate ?? 1));
+    }
+  }
+
+  return 0;
+}
+
+function fixedExpenseAmountForUsdAnalysis(
+  expense: FinancialMarginFixedExpense,
+  uyuPerUsdRate?: number,
+) {
+  const amount = normalizePositiveNumber(expense.monthlyAmount);
+  const currency = normalizeCurrencyCode(expense.currency);
+
+  if (currency === "USD") {
+    return amount;
+  }
+
+  if (currency === "UYU") {
+    const rate = normalizePositiveNumber(uyuPerUsdRate ?? 0);
+
+    if (rate > 0) {
+      return roundToTwo(amount / rate);
+    }
+  }
+
+  return 0;
+}
+
 function normalizePositiveNumber(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -2023,17 +2156,17 @@ function isEssentialMarginCategory(category?: string) {
 
 function sumFixedExpensesByEssentialCategory(
   fixedExpenses: FinancialMarginFixedExpense[],
+  uyuPerUsdRate?: number,
 ) {
   return fixedExpenses.reduce((total, expense) => {
     if (
       expense.active === false ||
-      normalizeCurrencyCode(expense.currency) !== "USD" ||
       !isEssentialMarginCategory(expense.category)
     ) {
       return total;
     }
 
-    return total + normalizePositiveNumber(expense.monthlyAmount);
+    return total + fixedExpenseAmountForUsdAnalysis(expense, uyuPerUsdRate);
   }, 0);
 }
 
@@ -2079,6 +2212,27 @@ function financialMarginState({
   return "estable";
 }
 
+function financialMarginAvailableTone({
+  availableMonthlyMargin,
+  marginMonthlyIncome,
+}: {
+  availableMonthlyMargin: number;
+  marginMonthlyIncome: number;
+}): FinancialMarginAnalysis["availableMonthlyMarginTone"] {
+  if (availableMonthlyMargin <= 0) {
+    return "red";
+  }
+
+  if (
+    marginMonthlyIncome > 0 &&
+    availableMonthlyMargin / marginMonthlyIncome < 0.05
+  ) {
+    return "red";
+  }
+
+  return "green";
+}
+
 function marginChangeJobCapacity(monthsCovered: number): ChangeJobCapacity {
   if (monthsCovered >= 9) {
     return "alta";
@@ -2117,12 +2271,16 @@ function marginPaycheckDependency({
 
 function financialMarginSignals({
   monthlyIncome,
+  estimatedMonthlyIncome,
+  marginIncomeSource,
   availableMonthlyMargin,
   monthsCovered,
   debtPressurePercent,
   emergencyFund,
 }: {
   monthlyIncome: number;
+  estimatedMonthlyIncome: number;
+  marginIncomeSource: FinancialMarginAnalysis["marginIncomeSource"];
   availableMonthlyMargin: number;
   monthsCovered: number;
   debtPressurePercent: number;
@@ -2130,7 +2288,13 @@ function financialMarginSignals({
 }) {
   const signals: string[] = [];
 
-  if (monthlyIncome <= 0) {
+  if (marginIncomeSource === "estimated") {
+    signals.push(
+      "Margen disponible usa ingreso fijo estimado hasta confirmar el sueldo del mes.",
+    );
+  }
+
+  if (monthlyIncome <= 0 && estimatedMonthlyIncome <= 0) {
     signals.push("Falta ingreso confirmado del mes.");
   }
 

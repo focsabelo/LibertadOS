@@ -189,6 +189,35 @@ export function summarizeActiveFixedExpenses(
   }));
 }
 
+export function fixedMonthlyExpenseUsdEquivalent(
+  totals: FixedMonthlyExpenseTotal[],
+  uyuPerUsdRate?: number,
+) {
+  let equivalent = 0;
+  let hasConvertedAmount = false;
+
+  for (const total of totals) {
+    const amount = normalizeAmount(total.amount);
+    const currency = normalizeCurrency(total.currency);
+
+    if (currency === "USD") {
+      equivalent += amount;
+      continue;
+    }
+
+    if (currency === "UYU") {
+      const rate = normalizeAmount(uyuPerUsdRate ?? 0);
+
+      if (rate > 0) {
+        equivalent += amount / rate;
+        hasConvertedAmount = true;
+      }
+    }
+  }
+
+  return hasConvertedAmount ? roundToTwo(equivalent) : undefined;
+}
+
 export function normalizeFixedMonthlyExpenseDraft(
   expense: FixedMonthlyExpenseDraft,
 ): FixedMonthlyExpenseDraft {
@@ -282,6 +311,10 @@ function normalizeCurrency(currency?: string) {
 
 function normalizeAmount(amount: number) {
   return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+}
+
+function roundToTwo(amount: number) {
+  return Math.round(amount * 100) / 100;
 }
 
 function parseLocalizedAmount(value: string) {

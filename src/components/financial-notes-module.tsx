@@ -18,6 +18,7 @@ import {
   recalculateDetectedFinancialItem,
   type ConfirmedFinancialTransaction,
   type AntiErrorRiskLevel,
+  type DailyUsdQuote,
   type DetectedFinancialItem,
   type FinancialFolder,
   type FinancialNote,
@@ -55,6 +56,20 @@ function formatCurrency(currency: string, amount: number) {
   }
 }
 
+function formatCurrencyWithCents(currency: string, amount: number) {
+  try {
+    return new Intl.NumberFormat("es-UY", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString("es-UY", {
+      maximumFractionDigits: 2,
+    })}`;
+  }
+}
+
 const percentFormatter = new Intl.NumberFormat("es-UY", {
   maximumFractionDigits: 0,
 });
@@ -75,6 +90,7 @@ const detectedControlClass =
   "libertad-field h-11 w-full rounded-md px-2 text-sm text-stone-900";
 
 const NOTE_CURRENCIES = ["UYU", "USD", "ARS", "EUR"] as const;
+const UY_DOLAR_API_USD_URL = "https://uy.dolarapi.com/v1/cotizaciones/usd";
 
 type FinancialNotesModuleProps = {
   supabase: SupabaseClient;
@@ -94,6 +110,102 @@ type DetectedSummary = {
   freedomImpact: number;
   potentialFreedomImpact: number;
 };
+
+type DolarApiUsdResponse = {
+  compra?: number;
+  venta?: number;
+  fechaActualizacion?: string;
+};
+
+async function fetchDailyUsdQuote(): Promise<DailyUsdQuote> {
+  const response = await fetch(UY_DOLAR_API_USD_URL, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error("No se pudo obtener la cotizacion USD/UYU.");
+  }
+
+  const data = (await response.json()) as DolarApiUsdResponse;
+  const rate = normalizeUsdQuoteRate(data);
+
+  if (!rate) {
+    throw new Error("La cotizacion USD/UYU recibida no es valida.");
+  }
+
+  return {
+    uyuPerUsd: rate,
+    date: quoteDate(data.fechaActualizacion),
+    source: "DolarAPI Uruguay",
+  };
+}
+
+function normalizeUsdQuoteRate(data: DolarApiUsdResponse) {
+  const venta = Number(data.venta);
+  const compra = Number(data.compra);
+
+  if (Number.isFinite(venta) && venta > 0) {
+    return venta;
+  }
+
+  if (Number.isFinite(compra) && compra > 0) {
+    return compra;
+  }
+
+  return 0;
+}
+
+function quoteDate(value?: string) {
+  const parsed = value ? new Date(value) : new Date();
+
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function usdQuoteStatusLabel(
+  status: "idle" | "loading" | "ready" | "error",
+  quote?: DailyUsdQuote,
+) {
+  if (status === "ready" && quote) {
+    return `USD ${quote.uyuPerUsd.toLocaleString("es-UY", {
+      maximumFractionDigits: 2,
+    })} UYU`;
+  }
+
+  if (status === "loading") {
+    return "Cotizacion USD...";
+  }
+
+  if (status === "error") {
+    return "Sin cotizacion USD";
+  }
+
+  return "Cotizacion USD";
+}
+
+function reanalyzeDraftNotesWithQuote(
+  notes: FinancialNote[],
+  quote?: DailyUsdQuote,
+) {
+  if (!quote) {
+    return notes;
+  }
+
+  return notes.map((note) =>
+    note.confirmedTransactionIds.length > 0
+      ? note
+      : {
+          ...note,
+          analysis: analyzeFinancialNote(note.body, new Date(), {
+            defaultCurrency: note.currency,
+            dailyUsdQuote: quote,
+          }),
+        },
+  );
+}
 
 export function FinancialNotesModule({
   supabase,
@@ -117,6 +229,11 @@ export function FinancialNotesModule({
   const [syncStatus, setSyncStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
+  const [dailyUsdQuote, setDailyUsdQuote] = useState<DailyUsdQuote>();
+  const [usdQuoteStatus, setUsdQuoteStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("loading");
+  const dailyUsdQuoteRef = useRef<DailyUsdQuote | undefined>(undefined);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -137,14 +254,18 @@ export function FinancialNotesModule({
 
         const parsedNotes =
           data.notes.length > 0 ? data.notes : [createEmptyNote()];
+        const quotedNotes = reanalyzeDraftNotesWithQuote(
+          parsedNotes,
+          dailyUsdQuoteRef.current,
+        );
 
         if (!isMounted) {
           return;
         }
 
-        setNotes(parsedNotes);
+        setNotes(quotedNotes);
         setTransactions(data.transactions);
-        setSelectedNoteId(parsedNotes[0]?.id ?? "");
+        setSelectedNoteId(quotedNotes[0]?.id ?? "");
         onTransactionsChange(data.transactions);
         setHasLoaded(true);
       })
@@ -164,6 +285,31 @@ export function FinancialNotesModule({
       onTransactionsChange(transactions);
     }
   }, [hasLoaded, onTransactionsChange, transactions]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchDailyUsdQuote()
+      .then((quote) => {
+        if (!isMounted) {
+          return;
+        }
+
+        dailyUsdQuoteRef.current = quote;
+        setDailyUsdQuote(quote);
+        setNotes((current) => reanalyzeDraftNotesWithQuote(current, quote));
+        setUsdQuoteStatus("ready");
+      })
+      .catch(() => {
+        if (isMounted) {
+          setUsdQuoteStatus("error");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasLoaded || !selectedNoteId) {
@@ -228,6 +374,13 @@ export function FinancialNotesModule({
       });
   }
 
+  function analyzeNoteBody(body: string, defaultCurrency: string) {
+    return analyzeFinancialNote(body, new Date(), {
+      defaultCurrency,
+      dailyUsdQuote,
+    });
+  }
+
   function createNote(folder = selectedFolder) {
     const note = createEmptyNote(folder);
 
@@ -243,9 +396,7 @@ export function FinancialNotesModule({
       return;
     }
 
-    const analysis = analyzeFinancialNote(body, new Date(), {
-      defaultCurrency: selectedNote.currency,
-    });
+    const analysis = analyzeNoteBody(body, selectedNote.currency);
     const noteWasConfirmed =
       (selectedNote?.confirmedTransactionIds.length ?? 0) > 0;
     const updatedNote: FinancialNote = {
@@ -302,9 +453,7 @@ export function FinancialNotesModule({
   function appendQuickCapture(text: string) {
     if (!selectedNote) {
       const note = createEmptyNote("Captura rapida");
-      const analysis = analyzeFinancialNote(text, new Date(), {
-        defaultCurrency: note.currency,
-      });
+      const analysis = analyzeNoteBody(text, note.currency);
       const quickNote: FinancialNote = {
         ...note,
         body: text,
@@ -334,9 +483,7 @@ export function FinancialNotesModule({
     const updatedNote: FinancialNote = {
       ...selectedNote,
       currency,
-      analysis: analyzeFinancialNote(selectedNote.body, new Date(), {
-        defaultCurrency: currency,
-      }),
+      analysis: analyzeNoteBody(selectedNote.body, currency),
       confirmedTransactionIds: [],
       pendingReconfirmation:
         selectedNote.confirmedTransactionIds.length > 0
@@ -395,7 +542,7 @@ export function FinancialNotesModule({
       ...selectedNote,
       analysis: selectedNote.analysis.map((item) =>
         item.id === itemId
-          ? recalculateDetectedFinancialItem({ ...item, ...patch })
+          ? recalculateDetectedFinancialItem({ ...item, ...patch }, { dailyUsdQuote })
           : item,
       ),
       confirmedTransactionIds: [],
@@ -558,6 +705,10 @@ export function FinancialNotesModule({
                         : "Cargando"
               }
               tone={loadError || saveError ? "red" : "green"}
+            />
+            <StatusPill
+              label={usdQuoteStatusLabel(usdQuoteStatus, dailyUsdQuote)}
+              tone={usdQuoteStatus === "error" ? "amber" : "neutral"}
             />
             <button
               className="h-11 rounded-md bg-white px-4 text-sm font-semibold text-stone-950 transition-colors hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
@@ -1112,6 +1263,27 @@ function DetectedItemCard({
           </select>
         </label>
       </div>
+
+      {item.usdConversion ? (
+        <div className="mt-3 rounded-md border border-sky-100 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-950">
+          <div className="flex items-center justify-between gap-3">
+            <span className="min-w-0 font-medium">Equiv. USD</span>
+            <span className="libertad-number shrink-0 text-right font-semibold">
+              {formatCurrencyWithCents(
+                item.usdConversion.convertedCurrency,
+                item.usdConversion.convertedAmount,
+              )}
+            </span>
+          </div>
+          <p className="mt-1 text-sky-900">
+            {formatCurrency(item.usdConversion.originalCurrency, item.usdConversion.originalAmount)} /{" "}
+            {item.usdConversion.rate.toLocaleString("es-UY", {
+              maximumFractionDigits: 2,
+            })}{" "}
+            UYU por USD - {item.usdConversion.date}
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950">
         {fireImpactLabel}: {formatCurrency(item.currency, item.freedomImpact)}
