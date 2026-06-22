@@ -66,6 +66,7 @@ export type AppSection =
   | "notas"
   | "decisiones"
   | "politica"
+  | "aumentos"
   | "margen"
   | "cartera"
   | "deuda"
@@ -118,6 +119,11 @@ export const secondaryModules: {
     id: "politica",
     label: "Politica",
     description: "Reglas del plan",
+  },
+  {
+    id: "aumentos",
+    label: "Aumentos",
+    description: "Ingresos extra",
   },
   {
     id: "cartera",

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v2.1.0 - Reglas de Aumentos e Ingresos Extra
+
+* Nueva seccion Aumentos para aplicar una regla editable 70/20/10 sobre aumentos confirmados.
+* El analizador reutiliza ingresos y gastos confirmados para separar aumento, gasto absorbido y margen capturado.
+* La vista muestra inversion sugerida, mejora de vida, gusto personal, separacion de colchon e impacto FIRE simulado.
+* Las sugerencias no crean movimientos reales ni modifican patrimonio, cartera, deuda o roadmap sin confirmacion manual.
+
 ## v2.0.9 - Navegacion avanzada
 
 * Avanzado ya no muestra la seccion Macro.

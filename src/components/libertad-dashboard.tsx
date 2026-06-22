@@ -18,6 +18,7 @@ import {
 import { DecisionModePanel } from "@/components/libertad-dashboard/decision-mode-panel";
 import { FireLeversPanel } from "@/components/libertad-dashboard/fire-levers-panel";
 import { FixedMonthlyExpensesPanel } from "@/components/libertad-dashboard/fixed-monthly-expenses-panel";
+import { IncomeIncreasePanel } from "@/components/libertad-dashboard/income-increase-panel";
 import { InvestmentPolicyPanel } from "@/components/libertad-dashboard/investment-policy-panel";
 import {
   currencyFormatter,
@@ -56,6 +57,7 @@ import {
   analyzeBotOpera24hs,
   analyzeConfirmedDebtLoad,
   analyzeFinancialMargin,
+  analyzeIncomeIncrease,
   analyzeLifestyleInflation,
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
@@ -66,6 +68,7 @@ import {
   completionPercent,
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_FREEDOM_INPUTS,
+  DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   estimateYearsToTarget,
   freedomNumber,
@@ -73,6 +76,7 @@ import {
   normalizeTargetPortfolioSettings,
   type BotOpera24hsInvestment,
   type FreedomInputs,
+  type IncomeIncreaseRuleSettings,
   type InvestmentPolicySettings,
   type PortfolioAssetClass,
   type TargetPortfolioSettings,
@@ -167,6 +171,10 @@ export function LibertadDashboard() {
   >([]);
   const [roadmapSimulatedContribution, setRoadmapSimulatedContribution] =
     useState(0);
+  const [incomeIncreaseRule, setIncomeIncreaseRule] =
+    useState<IncomeIncreaseRuleSettings>(
+      DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
+    );
   const [confirmedTransactions, setConfirmedTransactions] = useState<
     ConfirmedFinancialTransaction[]
   >([]);
@@ -474,6 +482,15 @@ export function LibertadDashboard() {
     () => analyzeLifestyleInflation(confirmedTransactions),
     [confirmedTransactions],
   );
+  const incomeIncreaseAnalysis = useMemo(
+    () =>
+      analyzeIncomeIncrease({
+        lifestyle: lifestyleInflation,
+        settings: incomeIncreaseRule,
+        monthlyContribution: inputs.monthlyContribution,
+      }),
+    [incomeIncreaseRule, inputs.monthlyContribution, lifestyleInflation],
+  );
   const confirmedDebtLoad = useMemo(
     () =>
       analyzeConfirmedDebtLoad(
@@ -589,6 +606,18 @@ export function LibertadDashboard() {
     setInputs((current) => ({
       ...current,
       [key]: Number.isFinite(parsedValue) ? parsedValue : 0,
+    }));
+  }
+
+  function updateIncomeIncreaseRule(
+    key: keyof IncomeIncreaseRuleSettings,
+    value: string,
+  ) {
+    const parsedValue = Number(value);
+
+    setIncomeIncreaseRule((current) => ({
+      ...current,
+      [key]: Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
     }));
   }
 
@@ -919,44 +948,53 @@ export function LibertadDashboard() {
     financialMargin.state === "fragil" || financialMargin.state === "ajustado";
   const needsPortfolioAttention = Boolean(targetPortfolio.targetWarning);
   const needsLifestyleAttention = lifestyleInflation.risk === "alto";
+  const needsIncomeIncreaseAttention =
+    incomeIncreaseAnalysis.hasIncrease &&
+    incomeIncreaseAnalysis.absorbedByExpensesPercent >= 70;
   const needsWeeklyExecution = weeklyExecution.status !== "cumplido";
   const primaryAttention = needsDebtAttention
     ? "Revisar deuda confirmada"
     : needsMarginAttention
       ? "Revisar margen financiero"
-      : needsLifestyleAttention
-        ? "Revisar inflacion de estilo de vida"
-        : needsPortfolioAttention
-          ? "Ajustar objetivos de cartera"
-          : needsWeeklyExecution
-            ? "Cerrar sistema semanal"
-            : isGuidedEmptyState
-              ? "Cargar datos base"
-              : confirmedTransactions.length === 0
-              ? "Capturar y confirmar el primer movimiento"
-              : "Mantener captura semanal";
+      : needsIncomeIncreaseAttention
+        ? "Aplicar regla de aumentos"
+        : needsLifestyleAttention
+          ? "Revisar inflacion de estilo de vida"
+          : needsPortfolioAttention
+            ? "Ajustar objetivos de cartera"
+            : needsWeeklyExecution
+              ? "Cerrar sistema semanal"
+              : isGuidedEmptyState
+                ? "Cargar datos base"
+                : confirmedTransactions.length === 0
+                  ? "Capturar y confirmar el primer movimiento"
+                  : "Mantener captura semanal";
   const weeklyAction = needsDebtAttention
     ? "Abrir deuda y revisar la presion mensual."
     : needsMarginAttention
       ? "Abrir margen y acercar el colchon al punto de tranquilidad."
-      : needsLifestyleAttention
-        ? "Abrir dashboard y aplicar una regla concreta al aumento."
-        : needsPortfolioAttention
-          ? "Abrir cartera y corregir objetivos hasta 100%."
-          : weeklyExecution.recommendation;
+      : needsIncomeIncreaseAttention
+        ? "Abrir aumentos y separar el dinero nuevo antes de subir gastos."
+        : needsLifestyleAttention
+          ? "Abrir estilo y revisar inflacion de vida."
+          : needsPortfolioAttention
+            ? "Abrir cartera y corregir objetivos hasta 100%."
+            : weeklyExecution.recommendation;
   const primaryActionSection: AppSection = needsDebtAttention
     ? "deuda"
     : needsMarginAttention
       ? "margen"
-      : needsLifestyleAttention
-        ? "dashboard"
-        : needsPortfolioAttention
-          ? "cartera"
-          : needsWeeklyExecution
-            ? "semana"
-            : isGuidedEmptyState
-              ? "configuracion"
-              : "notas";
+      : needsIncomeIncreaseAttention
+        ? "aumentos"
+        : needsLifestyleAttention
+          ? "estilo"
+          : needsPortfolioAttention
+            ? "cartera"
+            : needsWeeklyExecution
+              ? "semana"
+              : isGuidedEmptyState
+                ? "configuracion"
+                : "notas";
 
   if (supabaseConfigError) {
     return (
@@ -1370,6 +1408,15 @@ export function LibertadDashboard() {
 
           {activeSection === "estilo" ? (
             <LifestyleInflationPanel analysis={lifestyleInflation} />
+          ) : null}
+
+          {activeSection === "aumentos" ? (
+            <IncomeIncreasePanel
+              analysis={incomeIncreaseAnalysis}
+              settings={incomeIncreaseRule}
+              onOpenNotes={() => selectSection("notas")}
+              onSettingsChange={updateIncomeIncreaseRule}
+            />
           ) : null}
 
           {activeSection === "margen" ? (

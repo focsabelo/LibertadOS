@@ -4,14 +4,17 @@ import {
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
   analyzeLifestyleInflation,
+  analyzeIncomeIncrease,
   analyzeFinancialMargin,
   analyzeConfirmedDebtLoad,
   analyzeInvestmentPolicy,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
+  DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
+  normalizeIncomeIncreaseRuleSettings,
   normalizeInvestmentPolicySettings,
   freedomNumber,
   type ConfirmedDebtLoadTransaction,
@@ -791,6 +794,20 @@ type LifestyleCase = {
   increaseRuleTreat?: number;
 };
 
+type IncomeIncreaseCase = {
+  name: string;
+  transactions: LifestyleInflationTransaction[];
+  hasIncrease: boolean;
+  increaseAmount?: number;
+  investment?: number;
+  lifestyle?: number;
+  treat?: number;
+  emergencyFund?: number;
+  absorbedByExpenses?: number;
+  capturedForFreedom?: number;
+  fireImpact?: number;
+};
+
 const lifestyleCases: LifestyleCase[] = [
   {
     name: "Ingreso sube y gasto no sube",
@@ -875,6 +892,97 @@ const lifestyleCases: LifestyleCase[] = [
 
 for (const testCase of lifestyleCases) {
   runLifestyleCase(testCase);
+}
+
+const normalizedIncreaseRule = normalizeIncomeIncreaseRuleSettings({
+  investmentPercent: 120,
+  lifestylePercent: -10,
+  treatPercent: 5,
+});
+
+assertEqual(
+  DEFAULT_INCOME_INCREASE_RULE_SETTINGS.investmentPercent,
+  70,
+  "income increase defaults",
+  "investmentPercent",
+);
+assertEqual(
+  DEFAULT_INCOME_INCREASE_RULE_SETTINGS.lifestylePercent,
+  20,
+  "income increase defaults",
+  "lifestylePercent",
+);
+assertEqual(
+  DEFAULT_INCOME_INCREASE_RULE_SETTINGS.treatPercent,
+  10,
+  "income increase defaults",
+  "treatPercent",
+);
+assertEqual(
+  normalizedIncreaseRule.investmentPercent,
+  70,
+  "invalid income increase rule",
+  "investmentPercent",
+);
+assertEqual(
+  normalizedIncreaseRule.lifestylePercent,
+  20,
+  "invalid income increase rule",
+  "lifestylePercent",
+);
+assertEqual(
+  normalizedIncreaseRule.treatPercent,
+  10,
+  "invalid income increase rule",
+  "treatPercent",
+);
+
+const incomeIncreaseCases: IncomeIncreaseCase[] = [
+  {
+    name: "Aumento confirmado aplica regla 70/20/10",
+    transactions: [
+      tx("ingreso", 1000, "2026-05-10"),
+      tx("gasto", 600, "2026-05-11"),
+      tx("ingreso", 1500, "2026-06-10"),
+      tx("gasto", 600, "2026-06-11"),
+    ],
+    hasIncrease: true,
+    increaseAmount: 500,
+    investment: 350,
+    lifestyle: 100,
+    treat: 50,
+    emergencyFund: 25,
+    absorbedByExpenses: 0,
+    capturedForFreedom: 500,
+    fireImpact: 105000,
+  },
+  {
+    name: "Gasto confirmado absorbe parte del aumento",
+    transactions: [
+      tx("ingreso", 1000, "2026-05-10"),
+      tx("gasto", 600, "2026-05-11"),
+      tx("ingreso", 1500, "2026-06-10"),
+      tx("gasto", 800, "2026-06-11"),
+    ],
+    hasIncrease: true,
+    increaseAmount: 500,
+    absorbedByExpenses: 200,
+    capturedForFreedom: 300,
+  },
+  {
+    name: "Sin aumento confirmado queda inactivo",
+    transactions: [
+      tx("ingreso", 1000, "2026-05-10"),
+      tx("gasto", 600, "2026-05-11"),
+      tx("ingreso", 1000, "2026-06-10"),
+      tx("gasto", 600, "2026-06-11"),
+    ],
+    hasIncrease: false,
+  },
+];
+
+for (const testCase of incomeIncreaseCases) {
+  runIncomeIncreaseCase(testCase);
 }
 
 type DebtLoadCase = {
@@ -1704,7 +1812,7 @@ assertEqual(
 );
 
 console.log(
-  `Parser regression tests passed: ${cases.length}. Decision mode tests passed: ${decisionModeCases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
+  `Parser regression tests passed: ${cases.length}. Decision mode tests passed: ${decisionModeCases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Income increase tests passed: ${incomeIncreaseCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
 );
 
 function tx(
@@ -1782,6 +1890,96 @@ function runLifestyleCase(expected: LifestyleCase) {
       expected.increaseRuleTreat,
       expected.name,
       "increaseRule.personalTreat",
+    );
+  }
+}
+
+function runIncomeIncreaseCase(expected: IncomeIncreaseCase) {
+  const lifestyleAnalysis = analyzeLifestyleInflation(
+    expected.transactions,
+    new Date("2026-06-18T12:00:00Z"),
+  );
+  const analysis = analyzeIncomeIncrease({
+    lifestyle: lifestyleAnalysis,
+    monthlyContribution: 100,
+  });
+
+  assertEqual(
+    analysis.hasIncrease,
+    expected.hasIncrease,
+    expected.name,
+    "hasIncrease",
+  );
+
+  if (expected.increaseAmount !== undefined) {
+    assertEqual(
+      analysis.increaseAmount,
+      expected.increaseAmount,
+      expected.name,
+      "increaseAmount",
+    );
+  }
+
+  if (expected.investment !== undefined) {
+    assertEqual(
+      analysis.plan.investment,
+      expected.investment,
+      expected.name,
+      "plan.investment",
+    );
+  }
+
+  if (expected.lifestyle !== undefined) {
+    assertEqual(
+      analysis.plan.lifestyleUpgrade,
+      expected.lifestyle,
+      expected.name,
+      "plan.lifestyleUpgrade",
+    );
+  }
+
+  if (expected.treat !== undefined) {
+    assertEqual(
+      analysis.plan.personalTreat,
+      expected.treat,
+      expected.name,
+      "plan.personalTreat",
+    );
+  }
+
+  if (expected.emergencyFund !== undefined) {
+    assertEqual(
+      analysis.plan.emergencyFund,
+      expected.emergencyFund,
+      expected.name,
+      "plan.emergencyFund",
+    );
+  }
+
+  if (expected.absorbedByExpenses !== undefined) {
+    assertEqual(
+      analysis.absorbedByExpenses,
+      expected.absorbedByExpenses,
+      expected.name,
+      "absorbedByExpenses",
+    );
+  }
+
+  if (expected.capturedForFreedom !== undefined) {
+    assertEqual(
+      analysis.capturedForFreedom,
+      expected.capturedForFreedom,
+      expected.name,
+      "capturedForFreedom",
+    );
+  }
+
+  if (expected.fireImpact !== undefined) {
+    assertEqual(
+      analysis.fireImpact,
+      expected.fireImpact,
+      expected.name,
+      "fireImpact",
     );
   }
 }

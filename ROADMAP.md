@@ -483,7 +483,7 @@ Estado:
 
 ---
 
-## v2.1.0 Reglas de Aumentos e Ingresos Extra
+## v2.1.0 Reglas de Aumentos e Ingresos Extra - cerrado
 
 Objetivo:
 Evitar que aumentos de ingresos se conviertan automáticamente en más gasto.
@@ -513,6 +513,15 @@ Reglas:
 * la app no debe asumir que todo aumento debe invertirse;
 * debe proteger contra inflación del estilo de vida;
 * debe permitir disfrutar sin destruir el plan.
+
+Estado:
+
+* analizador `analyzeIncomeIncrease` agregado sobre transacciones confirmadas;
+* regla 70/20/10 editable en estado local, sin persistencia nueva;
+* pantalla dedicada Aumentos agregada a la navegacion avanzada;
+* aumento detectado, gasto absorbido, margen capturado, colchon e impacto FIRE se muestran como simulacion;
+* las sugerencias no crean movimientos reales ni modifican patrimonio, cartera, deuda o roadmap;
+* tests de normalizacion, aumento confirmado y ausencia de aumento agregados.
 
 ---
 
@@ -590,6 +599,5 @@ Cada módulo debe responder:
 
 ## Prioridad recomendada
 
-1. v2.1.0 Reglas de Aumentos e Ingresos Extra.
-2. v2.2.0 Revisión Mensual.
+1. v2.2.0 Revisión Mensual.
 
