@@ -525,7 +525,7 @@ Estado:
 
 ---
 
-## v2.2.0 Revisión Mensual
+## v2.2.0 Revisión Mensual - cerrado
 
 Objetivo:
 Cerrar cada mes con diagnóstico financiero claro.
@@ -557,6 +557,16 @@ Reglas:
 * mostrar causa y consecuencia;
 * siempre terminar con una acción concreta;
 * separar realidad confirmada de hipótesis.
+
+Estado:
+
+* analizador `analyzeMonthlyReview` agregado sobre movimientos reales confirmados del mes;
+* pantalla dedicada Revision agregada a la navegacion avanzada;
+* cierre mensual muestra ingresos, gastos, tasa de ahorro, inversion realizada, deuda agregada, compras grandes, compras con impulso y accion principal;
+* estados implementados: fuerte, correcto, debil y alerta;
+* dashboard puede sugerir cerrar Revision cuando el mes queda en alerta;
+* sin persistencia nueva, sin crear movimientos reales y sin modificar patrimonio, cartera, deuda o roadmap;
+* tests de mes fuerte, mes de alerta y mes sin datos confirmados agregados.
 
 ---
 
@@ -599,5 +609,5 @@ Cada módulo debe responder:
 
 ## Prioridad recomendada
 
-1. v2.2.0 Revisión Mensual.
+1. Definir siguiente modulo operativo.
 

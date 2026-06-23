@@ -20,6 +20,7 @@ import { FireLeversPanel } from "@/components/libertad-dashboard/fire-levers-pan
 import { FixedMonthlyExpensesPanel } from "@/components/libertad-dashboard/fixed-monthly-expenses-panel";
 import { IncomeIncreasePanel } from "@/components/libertad-dashboard/income-increase-panel";
 import { InvestmentPolicyPanel } from "@/components/libertad-dashboard/investment-policy-panel";
+import { MonthlyReviewPanel } from "@/components/libertad-dashboard/monthly-review-panel";
 import {
   currencyFormatter,
   numberFormatter,
@@ -59,6 +60,7 @@ import {
   analyzeFinancialMargin,
   analyzeIncomeIncrease,
   analyzeLifestyleInflation,
+  analyzeMonthlyReview,
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
   analyzeWealthRoadmap,
@@ -372,8 +374,13 @@ export function LibertadDashboard() {
   useEffect(() => {
     function syncSectionFromHash() {
       const hashSection = window.location.hash.slice(1);
+      const normalizedSection =
+        hashSection === "semana" ? "revision" : hashSection;
+      if (hashSection === "semana") {
+        window.history.replaceState(null, "", "#revision");
+      }
       const matchingSection = modules.find(
-        (module) => module.id === hashSection,
+        (module) => module.id === normalizedSection,
       );
 
       if (matchingSection) {
@@ -515,9 +522,18 @@ export function LibertadDashboard() {
       uyuPerUsdRate,
     ],
   );
+  const monthlyReview = useMemo(
+    () => analyzeMonthlyReview({ transactions: confirmedTransactions }),
+    [confirmedTransactions],
+  );
   const targetPortfolio = useMemo(
-    () => analyzeTargetPortfolio(portfolioSettings, confirmedTransactions),
-    [portfolioSettings, confirmedTransactions],
+    () =>
+      analyzeTargetPortfolio(
+        portfolioSettings,
+        confirmedTransactions,
+        botOperaInvestment,
+      ),
+    [portfolioSettings, confirmedTransactions, botOperaInvestment],
   );
   const botOperaAnalysis = useMemo(
     () => analyzeBotOpera24hs(botOperaInvestment),
@@ -951,6 +967,8 @@ export function LibertadDashboard() {
   const needsIncomeIncreaseAttention =
     incomeIncreaseAnalysis.hasIncrease &&
     incomeIncreaseAnalysis.absorbedByExpensesPercent >= 70;
+  const needsMonthlyReviewAttention =
+    monthlyReview.status === "alerta" && confirmedTransactions.length > 0;
   const needsWeeklyExecution = weeklyExecution.status !== "cumplido";
   const primaryAttention = needsDebtAttention
     ? "Revisar deuda confirmada"
@@ -958,17 +976,19 @@ export function LibertadDashboard() {
       ? "Revisar margen financiero"
       : needsIncomeIncreaseAttention
         ? "Aplicar regla de aumentos"
-        : needsLifestyleAttention
-          ? "Revisar inflacion de estilo de vida"
-          : needsPortfolioAttention
-            ? "Ajustar objetivos de cartera"
-            : needsWeeklyExecution
-              ? "Cerrar sistema semanal"
-              : isGuidedEmptyState
-                ? "Cargar datos base"
-                : confirmedTransactions.length === 0
-                  ? "Capturar y confirmar el primer movimiento"
-                  : "Mantener captura semanal";
+          : needsLifestyleAttention
+            ? "Revisar inflacion de estilo de vida"
+            : needsMonthlyReviewAttention
+              ? "Cerrar revision mensual"
+              : needsPortfolioAttention
+                ? "Ajustar objetivos de cartera"
+                : needsWeeklyExecution
+                  ? "Cerrar revision semanal"
+                  : isGuidedEmptyState
+                    ? "Cargar datos base"
+                    : confirmedTransactions.length === 0
+                      ? "Capturar y confirmar el primer movimiento"
+                      : "Mantener captura semanal";
   const weeklyAction = needsDebtAttention
     ? "Abrir deuda y revisar la presion mensual."
     : needsMarginAttention
@@ -977,9 +997,11 @@ export function LibertadDashboard() {
         ? "Abrir aumentos y separar el dinero nuevo antes de subir gastos."
         : needsLifestyleAttention
           ? "Abrir estilo y revisar inflacion de vida."
-          : needsPortfolioAttention
-            ? "Abrir cartera y corregir objetivos hasta 100%."
-            : weeklyExecution.recommendation;
+          : needsMonthlyReviewAttention
+            ? monthlyReview.primaryAction
+            : needsPortfolioAttention
+              ? "Abrir cartera y corregir objetivos hasta 100%."
+              : weeklyExecution.recommendation;
   const primaryActionSection: AppSection = needsDebtAttention
     ? "deuda"
     : needsMarginAttention
@@ -988,13 +1010,15 @@ export function LibertadDashboard() {
         ? "aumentos"
         : needsLifestyleAttention
           ? "estilo"
-          : needsPortfolioAttention
-            ? "cartera"
-            : needsWeeklyExecution
-              ? "semana"
-              : isGuidedEmptyState
-                ? "configuracion"
-                : "notas";
+          : needsMonthlyReviewAttention
+            ? "revision"
+            : needsPortfolioAttention
+              ? "cartera"
+              : needsWeeklyExecution
+                ? "revision"
+                : isGuidedEmptyState
+                  ? "configuracion"
+                  : "notas";
 
   if (supabaseConfigError) {
     return (
@@ -1419,18 +1443,45 @@ export function LibertadDashboard() {
             />
           ) : null}
 
+          {activeSection === "revision" ? (
+            <section className="grid gap-5">
+              <section className="libertad-surface rounded-lg p-5 sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="max-w-3xl">
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Revision financiera
+                    </p>
+                    <h2 className="mt-1 text-2xl font-semibold text-stone-950 text-balance">
+                      Semana actual y cierre mensual en un solo lugar
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-stone-600">
+                      La semana ordena la ejecucion; el mes resume los datos
+                      confirmados antes de decidir el siguiente movimiento.
+                    </p>
+                  </div>
+                  <span className="inline-flex min-h-9 items-center rounded-md border border-stone-200 bg-stone-50 px-3 text-sm font-semibold text-stone-800">
+                    Revision
+                  </span>
+                </div>
+              </section>
+
+              <WeeklyExecutionPanel
+                analysis={weeklyExecution}
+                onOpenNotes={() => selectSection("notas")}
+                onToggleItem={toggleWeeklyExecutionItem}
+              />
+
+              <MonthlyReviewPanel
+                analysis={monthlyReview}
+                onOpenNotes={() => selectSection("notas")}
+              />
+            </section>
+          ) : null}
+
           {activeSection === "margen" ? (
             <FinancialMarginPanel
               analysis={financialMargin}
               onOpenSettings={() => selectSection("configuracion")}
-            />
-          ) : null}
-
-          {activeSection === "semana" ? (
-            <WeeklyExecutionPanel
-              analysis={weeklyExecution}
-              onOpenNotes={() => selectSection("notas")}
-              onToggleItem={toggleWeeklyExecutionItem}
             />
           ) : null}
 

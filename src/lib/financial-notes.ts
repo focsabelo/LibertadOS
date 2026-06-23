@@ -2,10 +2,13 @@ import {
   calculateDebtTotals,
   freedomNumber,
   type DebtAnalysis,
+  type DebtCertainty,
   type DebtKind,
   type DebtRisk,
   type DebtUse,
 } from "./finance";
+import { addLocalDays, toLocalDateKey } from "./local-date";
+import { createMoney, type Money } from "./money";
 
 export type FinancialType =
   | "gasto"
@@ -77,6 +80,7 @@ export type DetectedFinancialItem = {
   impulse: boolean;
   coreExpense: boolean;
   intent: TransactionIntent;
+  money: Money;
   freedomImpact: number;
   sourceText: string;
   incomeIncrease?: boolean;
@@ -121,6 +125,9 @@ export type AnalyzeFinancialNoteOptions = {
   defaultCurrency?: string;
   dailyUsdQuote?: DailyUsdQuote;
 };
+
+const localizedAmountPattern =
+  /(?:US\$|USD|UYU|\$)?\s*(\d+(?:[.,]\d{3})*(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*(?!%)(?:USD|UYU|pesos?|dolares?|dólares?)?/gi;
 
 const typeLabels: Record<FinancialType, string> = {
   gasto: "Gasto",
@@ -182,11 +189,7 @@ export function analyzeFinancialNote(
       ? `${segment} ${nextSegment}`
       : segment;
     const normalizedSegmentContext = normalize(segmentContext);
-    const amountMatches = Array.from(
-      segment.matchAll(
-        /(?:US\$|USD|UYU|\$)?\s*(\d+(?:[.,]\d+)?)\s*(?!%)(?:USD|UYU|pesos?|dolares?|dólares?)?/gi,
-      ),
-    );
+    const amountMatches = Array.from(segment.matchAll(localizedAmountPattern));
 
     for (const [matchIndex, match] of amountMatches.entries()) {
       if (shouldIgnoreNumberMatch(segment, match)) {
@@ -345,11 +348,17 @@ export function recalculateDetectedFinancialItem(
     currency: item.currency,
     quote: options.dailyUsdQuote ?? quoteFromConversion(item.usdConversion),
   });
+  const money = createMoney({
+    amount: item.amount,
+    currency: item.currency,
+    usdConversion,
+  });
 
   return {
     ...item,
     impulse,
     debt,
+    money,
     freedomImpact,
     usdConversion,
     antiErrorReview: buildAntiErrorReview({
@@ -403,6 +412,7 @@ function buildItem({
       "oro",
       "bitcoin",
       "bienes_raices",
+      "bot_especulacion",
     ].includes(category)
   ) {
     type = "inversion";
@@ -452,12 +462,18 @@ function buildItem({
     currency,
     quote: dailyUsdQuote,
   });
+  const money = createMoney({
+    amount: effectiveAmount,
+    currency,
+    usdConversion,
+  });
 
   return {
     id,
     type,
     amount: effectiveAmount,
     currency,
+    money,
     category,
     date,
     recurring,
@@ -519,7 +535,18 @@ function detectType(text: string): FinancialType {
     return "deuda";
   }
 
-  if (hasAny(text, ["invert", "etf", "bitcoin", "acciones", "bonos"])) {
+  if (
+    hasAny(text, [
+      "invert",
+      "etf",
+      "bitcoin",
+      "acciones",
+      "bonos",
+      "botopera24hs",
+      "bot opera24hs",
+      "trading algoritmico",
+    ])
+  ) {
     return "inversion";
   }
 
@@ -596,6 +623,19 @@ function detectCategory(text: string, type: FinancialType, indexHint: number) {
       ])
     ) {
       return "bienes_raices";
+    }
+
+    if (
+      hasAny(text, [
+        "bot especulacion",
+        "bot especulativo",
+        "botopera24hs",
+        "bot opera24hs",
+        "opera24hs",
+        "trading algoritmico",
+      ])
+    ) {
+      return "bot_especulacion";
     }
 
     if (hasAny(text, ["etf", "acciones", "bonos", "inversion"])) {
@@ -784,6 +824,11 @@ function buildDebtAnalysis({
     termMonths,
     annualRate,
   });
+  const certainty = debtCertainty({
+    missingFields,
+    monthlyMarginImpact: totals.monthlyMarginImpact,
+    termMonths,
+  });
   const signals = debtSignals({
     kind,
     intent,
@@ -810,9 +855,30 @@ function buildDebtAnalysis({
     salaryDependencyIncrease: totals.salaryDependencyIncrease,
     use: detectDebtUse(normalizedText, kind),
     risk: debtRisk({ kind, missingFields, normalizedText }),
+    certainty,
     signals,
     missingFields,
   };
+}
+
+function debtCertainty({
+  missingFields,
+  monthlyMarginImpact,
+  termMonths,
+}: {
+  missingFields: string[];
+  monthlyMarginImpact: number;
+  termMonths: number;
+}): DebtCertainty {
+  if (missingFields.length === 0) {
+    return "completa";
+  }
+
+  if (monthlyMarginImpact > 0 && termMonths > 0) {
+    return "parcial";
+  }
+
+  return "insuficiente";
 }
 
 function detectDebtKind(text: string, category: string): DebtKind {
@@ -1477,10 +1543,10 @@ function detectDate(text: string, today: Date) {
   const date = new Date(today);
 
   if (text.includes("ayer")) {
-    date.setDate(date.getDate() - 1);
+    return toLocalDateKey(addLocalDays(date, -1));
   }
 
-  return date.toISOString().slice(0, 10);
+  return toLocalDateKey(date);
 }
 
 function detectCurrency(text: string, fallbackCurrency = "USD") {
@@ -1522,7 +1588,7 @@ function detectIncomeIncrease(text: string) {
 
 function splitSegments(text: string) {
   return text
-    .split(/[\n.;,]+|\s+y\s+|\s+e\s+|\s+tambien\s+|\s+también\s+/i)
+    .split(/[\n;]+|(?<!\d)[.,]+|[.,]+(?!\d)|\s+y\s+|\s+e\s+|\s+tambien\s+|\s+también\s+/i)
     .map((segment) => segment.trim())
     .filter(Boolean);
 }
@@ -1586,7 +1652,36 @@ function mergeDuplicatedIncome(items: DetectedFinancialItem[]) {
 }
 
 function parseAmount(value: string) {
-  const normalized = value.replace(/\./g, "").replace(",", ".");
+  const trimmed = value.trim();
+  const lastComma = trimmed.lastIndexOf(",");
+  const lastDot = trimmed.lastIndexOf(".");
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    const decimalSeparator = lastComma > lastDot ? "," : ".";
+    const thousandsSeparator = decimalSeparator === "," ? "." : ",";
+    const parsed = Number(
+      trimmed
+        .split(thousandsSeparator)
+        .join("")
+        .replace(decimalSeparator, "."),
+    );
+
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const separator = lastComma >= 0 ? "," : lastDot >= 0 ? "." : "";
+
+  if (!separator) {
+    const parsed = Number(trimmed);
+
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const [whole, decimals] = trimmed.split(separator);
+  const normalized =
+    decimals?.length === 3
+      ? `${whole}${decimals}`
+      : trimmed.replace(separator, ".");
   const parsed = Number(normalized);
 
   return Number.isFinite(parsed) ? parsed : 0;

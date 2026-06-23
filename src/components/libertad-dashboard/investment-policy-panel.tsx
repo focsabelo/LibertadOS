@@ -44,11 +44,11 @@ export function InvestmentPolicyPanel({
               Politica personal de inversion
             </p>
             <h2 className="mt-1 text-2xl font-semibold text-stone-950">
-              Plan escrito antes del mercado
+              Sistema escrito antes del impulso
             </h2>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Reglas de largo plazo para revisar inversiones, rebalanceos y
-              cambios de estrategia sin convertir simulaciones en datos reales.
+              Reglas de conducta para invertir automatico, proteger el margen,
+              revisar aumentos y evitar cambios de estrategia en caliente.
             </p>
           </div>
           <button
@@ -106,8 +106,8 @@ function PolicyRules({ analysis }: { analysis: InvestmentPolicyAnalysis }) {
             Cumplimiento
           </h3>
           <p className="mt-1 text-sm leading-6 text-stone-600">
-            Lectura descriptiva del plan. No compra, vende ni rebalancea por
-            vos.
+            Lectura descriptiva del sistema. No compra, vende, rebalancea ni
+            crea movimientos por vos.
           </p>
         </div>
         <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700">
@@ -180,6 +180,10 @@ function PolicyEditor({
     key: keyof InvestmentPolicySettings;
     label: string;
   }[] = [
+    { key: "automaticInvestmentRule", label: "Inversion automatica" },
+    { key: "indexCoreRule", label: "Indices primero" },
+    { key: "incomeIncreaseRule", label: "Aumentos 70/20/10" },
+    { key: "weeklyReviewRule", label: "Revision semanal" },
     { key: "drawdownRule", label: "Caidas fuertes" },
     { key: "strongRallyRule", label: "Subidas fuertes" },
     { key: "bitcoinRule", label: "Bitcoin" },

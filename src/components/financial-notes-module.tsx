@@ -1493,6 +1493,10 @@ function DebtCostPanel({ debt }: { debt: DebtAnalysis }) {
           label="TAE estimada"
           value={formatOptionalPercent(debt.effectiveAnnualRate)}
         />
+        <SuggestionLine
+          label="Incertidumbre"
+          value={debtCertaintyLabel(debt.certainty)}
+        />
         <SuggestionLine label="Uso" value={debtUseLabel(debt.use)} />
       </div>
 
@@ -1696,6 +1700,16 @@ function debtRiskLabel(riskLevel: DebtRisk) {
   return riskLevel === "sin_datos"
     ? "sin datos"
     : `riesgo ${riskLevel}`;
+}
+
+function debtCertaintyLabel(certainty?: DebtAnalysis["certainty"]) {
+  const labels: Record<NonNullable<DebtAnalysis["certainty"]>, string> = {
+    completa: "Completa",
+    parcial: "Parcial",
+    insuficiente: "Insuficiente",
+  };
+
+  return certainty ? labels[certainty] : "Sin clasificar";
 }
 
 function debtKindLabel(kind: DebtAnalysis["kind"]) {

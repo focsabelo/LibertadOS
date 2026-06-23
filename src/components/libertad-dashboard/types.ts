@@ -67,10 +67,10 @@ export type AppSection =
   | "decisiones"
   | "politica"
   | "aumentos"
+  | "revision"
   | "margen"
   | "cartera"
   | "deuda"
-  | "semana"
   | "roadmap"
   | "palancas"
   | "estilo"
@@ -126,6 +126,11 @@ export const secondaryModules: {
     description: "Ingresos extra",
   },
   {
+    id: "revision",
+    label: "Revision",
+    description: "Cierre mensual",
+  },
+  {
     id: "cartera",
     label: "Cartera",
     description: "Asignacion objetivo",
@@ -144,11 +149,6 @@ export const secondaryModules: {
     id: "estilo",
     label: "Estilo",
     description: "Inflacion de vida",
-  },
-  {
-    id: "semana",
-    label: "Semana",
-    description: "Ejecucion semanal",
   },
   {
     id: "roadmap",

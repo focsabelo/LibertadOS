@@ -19,6 +19,7 @@ import type {
   ConfirmedFinancialTransaction,
   FinancialNote,
 } from "../src/lib/financial-notes";
+import { createMoney } from "../src/lib/money";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -225,6 +226,10 @@ const transaction: ConfirmedFinancialTransaction = {
   type: "gasto",
   amount: 100,
   currency: "USD",
+  money: createMoney({
+    amount: 100,
+    currency: "USD",
+  }),
   category: "comida",
   date: "2026-06-20",
   recurring: false,

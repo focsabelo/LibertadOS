@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## v2.3.1 - Confiabilidad de Margen, Fechas, Cartera y Deuda
+
+* Margen financiero evita duplicar un gasto fijo cuando el pago recurrente confirmado coincide con un gasto fijo activo.
+* Fechas relativas y cortes mensuales usan la fecha local en vez de cortar por UTC serializado.
+* Cartera objetivo pasa a calcular el actual como snapshot base + movimientos confirmados, sin elegir entre manual o derivado.
+* La UI de cartera renombra el monto editable como snapshot base y muestra si el actual viene de snapshot, movimientos o ambos.
+* La deuda detectada expone incertidumbre completa, parcial o insuficiente segun datos disponibles de cuota, plazo, principal y tasa.
+* Agregadas regresiones para doble conteo, timezone local, snapshot + movimientos e incertidumbre de deuda.
+
+## v2.3.0 - Money Type
+
+* Bot Opera24hs pasa a mostrarse como `Bot especulacion (trading algoritmico)` y cuenta como clase editable dentro de la cartera objetivo.
+* La cartera objetivo incorpora el capital asignado al bot como porcentaje junto a ETF USA, ETF Europa, emergentes, oro, Bitcoin e inmuebles.
+* Las notas de inversion que mencionan `botopera24hs` o trading algoritmico se clasifican como `bot_especulacion`.
+* Agregado el contrato `Money` con `amount`, `currency`, `usdAmount` y `conversionStatus`.
+* El parser adjunta `money` a cada item detectado para distinguir conversiones exactas, fallback y faltantes.
+* Las transacciones confirmadas reconstruyen `money` al cargarse desde Supabase.
+* Los calculos financieros criticos consumen `Money` para evitar conversiones silenciosas a cero.
+* Agregadas regresiones dedicadas para conversion exacta, fallback UYU y conversion faltante.
+* La Politica Personal incorpora reglas de conducta basadas en la filosofia de inversion: automatizacion, indices primero, aumentos 70/20/10 y revision semanal.
+* Los defaults de BTC, oro, acciones individuales e inmuebles ahora reflejan mejor el plan personal y mantienen la friccion antes de decisiones impulsivas.
+* La ejecucion semanal queda integrada dentro de Revision para unir semana actual y cierre mensual en una sola superficie.
+
+## v2.2.1 - Correccion Matematica Fase 1
+
+* Corregida la lectura de montos con puntos y comas para evitar capturas truncadas como `USD 1.50` o `UYU 1.500`.
+* Los gastos confirmados ahora reducen el patrimonio efectivo.
+* Las inversiones confirmadas ahora aumentan capital invertido sin crear patrimonio neto artificial.
+* Los montos UYU sin conversion guardada usan una cotizacion fallback en vez de desaparecer como cero.
+
+## v2.2.0 - Revision Mensual
+
+* Nueva seccion Revision para cerrar el mes con ingresos, gastos, tasa de ahorro, inversion, deuda, compras grandes y accion principal.
+* Analizador `analyzeMonthlyReview` agregado sobre movimientos reales confirmados del mes.
+* Estados mensuales: fuerte, correcto, debil y alerta, sin juicios ni cambios automaticos en dashboard, patrimonio, cartera, deuda o roadmap.
+* La navegacion avanzada expone Revision y el dashboard puede sugerir cerrar el mes cuando hay alerta.
+* Regresiones agregadas para mes fuerte, mes de alerta y mes sin datos confirmados.
+
 ## v2.1.0 - Reglas de Aumentos e Ingresos Extra
 
 * Nueva seccion Aumentos para aplicar una regla editable 70/20/10 sobre aumentos confirmados.

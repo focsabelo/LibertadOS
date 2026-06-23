@@ -246,11 +246,11 @@ function BotOpera24hsPanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h3 className="text-base font-semibold text-stone-950">
-            Bot Opera24hs
+            Bot especulacion (trading algoritmico)
           </h3>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-            Registro separado para medir aportes, capital operativo y ganancias
-            sin mezclar datos de notas no confirmadas.
+            Registro operativo para medir aportes, capital y ganancias. Su
+            total asignado cuenta dentro de la cartera objetivo.
           </p>
         </div>
         <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700">
@@ -517,7 +517,7 @@ function PortfolioAssetRow({
               {status.label}
             </span>
             <span className="rounded-full border border-stone-200 bg-white px-2 py-1 text-xs font-medium text-stone-600">
-              {asset.currentSource === "derivado" ? "Derivado" : "Manual"}
+              {portfolioSourceCopy(asset.currentSource)}
             </span>
           </div>
           <div
@@ -563,12 +563,11 @@ function PortfolioAssetRow({
 
         <label className="grid gap-2">
           <span className="text-xs font-semibold text-stone-600">
-            Actual manual
+            Snapshot base
           </span>
           <input
             autoComplete="off"
-            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950 disabled:bg-stone-100 disabled:text-stone-500 libertad-number"
-            disabled={asset.currentSource === "derivado"}
+            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
             inputMode="decimal"
             min="0"
             name={`manual-${asset.assetClass}`}
@@ -615,4 +614,18 @@ function portfolioStatusCopy(status: "sobrepeso" | "bajo_peso" | "alineado") {
   };
 
   return copy[status];
+}
+
+function portfolioSourceCopy(
+  source: ReturnType<typeof analyzeTargetPortfolio>["assets"][number]["currentSource"],
+) {
+  if (source === "snapshot_movimientos") {
+    return "Snapshot + movimientos";
+  }
+
+  if (source === "movimientos") {
+    return "Movimientos";
+  }
+
+  return "Snapshot";
 }

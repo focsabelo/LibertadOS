@@ -5,11 +5,13 @@ import {
   analyzeWeeklyExecution,
   analyzeLifestyleInflation,
   analyzeIncomeIncrease,
+  analyzeMonthlyReview,
   analyzeFinancialMargin,
   analyzeConfirmedDebtLoad,
   analyzeInvestmentPolicy,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
+  DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
@@ -20,10 +22,11 @@ import {
   type ConfirmedDebtLoadTransaction,
   type FinancialMarginFixedExpense,
   type FinancialMarginTransaction,
+  type MonthlyReviewTransaction,
   type InvestmentPolicyDecisionContext,
   type LifestyleInflationRisk,
   type LifestyleInflationTransaction,
-  type TargetPortfolioSettings,
+  type TargetPortfolioSettingsInput,
   type TargetPortfolioTransaction,
   type WeeklyExecutionReview,
   type WeeklyExecutionTransaction,
@@ -68,6 +71,7 @@ type ExpectedCase = {
     annualCost?: number;
     monthlyMarginImpact?: number;
     fireImpact?: number;
+    certainty?: string;
     risk?: string;
     missingFields?: string[];
     signals?: string[];
@@ -100,6 +104,26 @@ const cases: ExpectedCase[] = [
     currency: "UYU",
     category: "comida",
     freedomImpact: 8750,
+  },
+  {
+    text: "Gaste USD 1.50 en comida",
+    type: "gasto",
+    intent: "real",
+    confirmable: true,
+    amount: 1.5,
+    currency: "USD",
+    category: "comida",
+    freedomImpact: 37.5,
+  },
+  {
+    text: "Gaste UYU 1.500 en comida",
+    type: "gasto",
+    intent: "real",
+    confirmable: true,
+    amount: 1500,
+    currency: "UYU",
+    category: "comida",
+    freedomImpact: 37500,
   },
   {
     text: "Pense en gastar 5000 en un celular, pero no lo hice",
@@ -173,6 +197,15 @@ const cases: ExpectedCase[] = [
     confirmable: true,
     amount: 700,
     category: "etf_europa",
+    freedomImpact: 0,
+  },
+  {
+    text: "Inverti 100 en botopera24hs",
+    type: "inversion",
+    intent: "real",
+    confirmable: true,
+    amount: 100,
+    category: "bot_especulacion",
     freedomImpact: 0,
   },
   {
@@ -258,6 +291,7 @@ const cases: ExpectedCase[] = [
       annualCost: 2400,
       monthlyMarginImpact: 200,
       fireImpact: 60000,
+      certainty: "parcial",
       missingFields: ["capital original", "tasa anual"],
     },
   },
@@ -290,6 +324,7 @@ const cases: ExpectedCase[] = [
       kind: "prestamo",
       principal: 5000,
       monthlyMarginImpact: 0,
+      certainty: "insuficiente",
       missingFields: ["cuota mensual", "plazo", "tasa anual"],
       signals: ["Faltan cuota, plazo o tasa para estimar presion mensual."],
     },
@@ -331,6 +366,7 @@ const cases: ExpectedCase[] = [
       principal: 800,
       termMonths: 6,
       monthlyMarginImpact: 0,
+      certainty: "insuficiente",
       missingFields: ["cuota mensual", "tasa anual"],
       signals: ["Faltan cuota, plazo o tasa para estimar presion mensual."],
     },
@@ -631,6 +667,36 @@ function assert(condition: unknown, message: string): asserts condition {
 for (const testCase of cases) {
   runCase(testCase);
 }
+
+const localYesterdayItem = analyzeFinancialNote(
+  "Ayer gaste 100 en comida",
+  new Date("2026-06-01T02:30:00Z"),
+)[0];
+
+assertEqual(
+  localYesterdayItem.date,
+  "2026-05-30",
+  "Fecha relativa usa dia local de Montevideo",
+  "date",
+);
+
+const localMonthMargin = analyzeFinancialMargin({
+  transactions: [marginTx("ingreso", 2500, "2026-06-30")],
+  today: new Date("2026-07-01T02:30:00Z"),
+});
+
+assertEqual(
+  localMonthMargin.monthKey,
+  "2026-06",
+  "Mes financiero usa timezone local",
+  "monthKey",
+);
+assertEqual(
+  localMonthMargin.monthlyIncome,
+  2500,
+  "Mes financiero incluye movimientos del mes local",
+  "monthlyIncome",
+);
 
 type DecisionModeCase = {
   name: string;
@@ -1000,14 +1066,16 @@ type DebtLoadCase = {
 
 type PortfolioCase = {
   name: string;
-  settings: TargetPortfolioSettings;
+  settings: TargetPortfolioSettingsInput;
   transactions: TargetPortfolioTransaction[];
+  botInvestment?: BotOpera24hsInvestment;
   targetTotalPercent: number;
   targetWarning: boolean;
   totalCurrentAmount: number;
   asset: string;
   currentAmount: number;
-  currentSource: "manual" | "derivado";
+  currentSource: "snapshot" | "movimientos" | "snapshot_movimientos";
+  targetPercent?: number;
   status: "sobrepeso" | "bajo_peso" | "alineado";
   policyMonthlyContributionTarget?: number;
   policyRebalanceTolerancePercent?: number;
@@ -1061,6 +1129,20 @@ type WeeklyExecutionCase = {
   overdueAction: string;
 };
 
+type MonthlyReviewCase = {
+  name: string;
+  transactions: MonthlyReviewTransaction[];
+  status: "fuerte" | "correcto" | "debil" | "alerta";
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  investmentAmount: number;
+  debtAdded: number;
+  bigPurchaseCount: number;
+  emotionalPurchaseCount: number;
+  savingRate: number;
+  primaryAction: string;
+};
+
 type FinancialMarginCase = {
   name: string;
   transactions: FinancialMarginTransaction[];
@@ -1107,6 +1189,7 @@ type TransactionSummaryCase = {
   name: string;
   transactions: Parameters<typeof confirmedTransactionsSummary>[0];
   netWorthDelta: number;
+  investedDelta?: number;
   confirmedExpenses: number;
   monthlyConfirmedExpenses: number;
 };
@@ -1183,10 +1266,59 @@ const portfolioCases: PortfolioCase[] = [
     totalCurrentAmount: 0,
     asset: "etf_usa",
     currentAmount: 0,
-    currentSource: "manual",
+    currentSource: "snapshot",
     status: "alineado",
     policyMonthlyContributionTarget: 1800,
     policyRebalanceTolerancePercent: 5,
+  },
+  {
+    name: "Bot especulacion cuenta como clase de activo derivada",
+    settings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
+    transactions: [],
+    botInvestment: {
+      ...DEFAULT_BOT_OPERA24HS_INVESTMENT,
+      initialCapital: 1000,
+      monthlyContribution: 100,
+      reinvestmentMinimum: 500,
+      monthlyResults: [{ month: "2026-06", amount: 50 }],
+    },
+    targetTotalPercent: 100,
+    targetWarning: false,
+    totalCurrentAmount: 1150,
+    asset: "bot_especulacion",
+    currentAmount: 1150,
+    currentSource: "movimientos",
+    status: "sobrepeso",
+  },
+  {
+    name: "Cartera legada agrega bot sin pasar de 100",
+    settings: {
+      targets: {
+        etf_usa: 45,
+        etf_europa: 20,
+        emergentes: 15,
+        oro: 10,
+        bitcoin: 5,
+        bienes_raices: 5,
+      },
+      manualAmounts: {
+        etf_usa: 0,
+        etf_europa: 0,
+        emergentes: 0,
+        oro: 0,
+        bitcoin: 0,
+        bienes_raices: 0,
+      },
+    },
+    transactions: [],
+    targetTotalPercent: 100,
+    targetWarning: false,
+    totalCurrentAmount: 0,
+    asset: "bot_especulacion",
+    currentAmount: 0,
+    currentSource: "snapshot",
+    targetPercent: 5,
+    status: "alineado",
   },
   {
     name: "Objetivos no suman 100",
@@ -1203,7 +1335,7 @@ const portfolioCases: PortfolioCase[] = [
     totalCurrentAmount: 0,
     asset: "bitcoin",
     currentAmount: 0,
-    currentSource: "manual",
+    currentSource: "snapshot",
     status: "alineado",
   },
   {
@@ -1215,11 +1347,11 @@ const portfolioCases: PortfolioCase[] = [
     totalCurrentAmount: 0,
     asset: "oro",
     currentAmount: 0,
-    currentSource: "manual",
+    currentSource: "snapshot",
     status: "alineado",
   },
   {
-    name: "Inversion confirmada alimenta actual derivado",
+    name: "Inversion confirmada alimenta movimientos",
     settings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
     transactions: [portfolioTx("etf_usa", 3000)],
     targetTotalPercent: 100,
@@ -1227,11 +1359,11 @@ const portfolioCases: PortfolioCase[] = [
     totalCurrentAmount: 3000,
     asset: "etf_usa",
     currentAmount: 3000,
-    currentSource: "derivado",
+    currentSource: "movimientos",
     status: "sobrepeso",
   },
   {
-    name: "Monto manual alimenta actual sin derivado",
+    name: "Snapshot base alimenta actual sin movimientos",
     settings: {
       targets: DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets,
       manualAmounts: {
@@ -1245,7 +1377,7 @@ const portfolioCases: PortfolioCase[] = [
     totalCurrentAmount: 500,
     asset: "oro",
     currentAmount: 500,
-    currentSource: "manual",
+    currentSource: "snapshot",
     status: "sobrepeso",
   },
   {
@@ -1259,6 +1391,7 @@ const portfolioCases: PortfolioCase[] = [
         oro: 100,
         bitcoin: 50,
         bienes_raices: 50,
+        bot_especulacion: 0,
       },
     },
     transactions: [],
@@ -1267,8 +1400,26 @@ const portfolioCases: PortfolioCase[] = [
     totalCurrentAmount: 820,
     asset: "etf_europa",
     currentAmount: 20,
-    currentSource: "manual",
+    currentSource: "snapshot",
     status: "bajo_peso",
+  },
+  {
+    name: "Cartera suma snapshot base y movimientos confirmados",
+    settings: {
+      targets: DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets,
+      manualAmounts: {
+        ...DEFAULT_TARGET_PORTFOLIO_SETTINGS.manualAmounts,
+        etf_usa: 1000,
+      },
+    },
+    transactions: [portfolioTx("etf_usa", 250)],
+    targetTotalPercent: 100,
+    targetWarning: false,
+    totalCurrentAmount: 1250,
+    asset: "etf_usa",
+    currentAmount: 1250,
+    currentSource: "snapshot_movimientos",
+    status: "sobrepeso",
   },
 ];
 
@@ -1301,6 +1452,24 @@ assertEqual(
   "policy normalization preserves valid friction",
   "changeFriction",
 );
+assertEqual(
+  normalizedPolicy.automaticInvestmentRule.includes("transferencia automatica"),
+  true,
+  "policy normalization fills automatic investment rule",
+  "automaticInvestmentRule",
+);
+assertEqual(
+  normalizedPolicy.indexCoreRule.includes("indices simples"),
+  true,
+  "policy normalization fills index core rule",
+  "indexCoreRule",
+);
+assertEqual(
+  normalizedPolicy.incomeIncreaseRule.includes("70/20/10"),
+  true,
+  "policy normalization fills income increase rule",
+  "incomeIncreaseRule",
+);
 
 const basePolicyAnalysis = analyzeInvestmentPolicy({
   portfolio: analyzeTargetPortfolio(DEFAULT_TARGET_PORTFOLIO_SETTINGS, []),
@@ -1316,6 +1485,18 @@ assertIncludes(
   basePolicyAnalysis.rules.map((rule) => rule.id),
   "no_touch_rule",
   "policy analysis includes no-touch rule",
+  "rules",
+);
+assertIncludes(
+  basePolicyAnalysis.rules.map((rule) => rule.id),
+  "automatic_investment_rule",
+  "policy analysis includes automatic investment rule",
+  "rules",
+);
+assertIncludes(
+  basePolicyAnalysis.rules.map((rule) => rule.id),
+  "income_increase_rule",
+  "policy analysis includes 70/20/10 rule",
   "rules",
 );
 
@@ -1415,7 +1596,7 @@ const botOperaCases: BotOperaCase[] = [
   {
     name: "Aportes quedan pendientes hasta llegar al minimo",
     investment: {
-      name: "Bot Opera24hs",
+      name: "Bot especulacion (trading algoritmico)",
       botNumber: "Bot 1",
       startDate: "2026-01-01",
       initialCapital: 1000,
@@ -1446,7 +1627,7 @@ const botOperaCases: BotOperaCase[] = [
   {
     name: "Al llegar al minimo pasa a capital operativo",
     investment: {
-      name: "Bot Opera24hs",
+      name: "Bot especulacion (trading algoritmico)",
       botNumber: "Bot 1",
       startDate: "2026-01-01",
       initialCapital: 1000,
@@ -1679,10 +1860,112 @@ const financialMarginCases: FinancialMarginCase[] = [
     calmPointDistance: 600,
     changeJobCapacity: "baja",
   },
+  {
+    name: "Pago confirmado de gasto fijo no duplica margen mensual",
+    transactions: [
+      marginTx("ingreso", 3000, "2026-06-01"),
+      marginTx("gasto", 1200, "2026-06-02", {
+        category: "vivienda",
+        recurring: true,
+      }),
+    ],
+    fixedExpenses: [fixedMarginExpense("Alquiler", "vivienda", 1200)],
+    monthlyIncome: 3000,
+    fixedMonthlyExpenses: 1200,
+    variableMonthlyExpenses: 0,
+    debtMonthlyPayments: 0,
+    availableMonthlyMargin: 1800,
+    emergencyFund: 0,
+    monthsCovered: 0,
+    savingRate: 60,
+    debtPressurePercent: 0,
+    essentialExpenses: 1200,
+    nonEssentialExpenses: 0,
+    state: "fragil",
+    calmPointDistance: 7200,
+    changeJobCapacity: "baja",
+  },
 ];
 
 for (const testCase of financialMarginCases) {
   runFinancialMarginCase(testCase);
+}
+
+const monthlyReviewCases: MonthlyReviewCase[] = [
+  {
+    name: "Mes fuerte resume ingresos, gastos, inversion y accion",
+    transactions: [
+      monthlyTx("ingreso", 5000, "2026-06-02", { category: "salario" }),
+      monthlyTx("gasto", 1200, "2026-06-05", { category: "vivienda" }),
+      monthlyTx("gasto", 500, "2026-06-07", { category: "comida" }),
+      monthlyTx("inversion", 1000, "2026-06-10", { category: "ETF USA" }),
+      monthlyTx("ahorro", 300, "2026-06-12", { category: "colchon" }),
+    ],
+    status: "fuerte",
+    monthlyIncome: 5000,
+    monthlyExpenses: 1700,
+    investmentAmount: 1000,
+    debtAdded: 0,
+    bigPurchaseCount: 1,
+    emotionalPurchaseCount: 0,
+    savingRate: 66,
+    primaryAction: "Cerrar el mes y sostener el aporte antes de subir gastos fijos.",
+  },
+  {
+    name: "Mes de alerta detecta deuda nueva y compra emocional",
+    transactions: [
+      monthlyTx("ingreso", 2500, "2026-06-02"),
+      monthlyTx("gasto", 900, "2026-06-05", { category: "vivienda" }),
+      monthlyTx("gasto", 850, "2026-06-09", {
+        antiErrorReview: {
+          applies: true,
+          signals: ["Compra impulsiva detectada."],
+        },
+      }),
+      monthlyTx("deuda", 3000, "2026-06-10", {
+        debt: {
+          kind: "prestamo",
+          monthlyMarginImpact: 450,
+          annualCost: 5400,
+          fireImpact: freedomNumber(450),
+          use: "consumo",
+          risk: "alto",
+          signals: [],
+          missingFields: [],
+        },
+      }),
+      monthlyTx("gasto", 1000, "2026-06-14", { intent: "intencion" }),
+    ],
+    status: "alerta",
+    monthlyIncome: 2500,
+    monthlyExpenses: 1750,
+    investmentAmount: 0,
+    debtAdded: 450,
+    bigPurchaseCount: 0,
+    emotionalPurchaseCount: 1,
+    savingRate: 12,
+    primaryAction: "Revisar deuda nueva y compras impulsivas antes de planear el mes siguiente.",
+  },
+  {
+    name: "Mes sin datos confirmados queda pendiente de cierre",
+    transactions: [
+      monthlyTx("gasto", 500, "2026-06-05", { intent: "pensado" }),
+      monthlyTx("ingreso", 2500, "2026-05-02"),
+    ],
+    status: "alerta",
+    monthlyIncome: 0,
+    monthlyExpenses: 0,
+    investmentAmount: 0,
+    debtAdded: 0,
+    bigPurchaseCount: 0,
+    emotionalPurchaseCount: 0,
+    savingRate: 0,
+    primaryAction: "Confirmar ingresos y gastos reales del mes antes de sacar conclusiones.",
+  },
+];
+
+for (const testCase of monthlyReviewCases) {
+  runMonthlyReviewCase(testCase);
 }
 
 const estimatedIncomeMargin = analyzeFinancialMargin({
@@ -1737,7 +2020,7 @@ assert(
 
 const effectiveInputsCases: EffectiveInputsCase[] = [
   {
-    name: "Gastos confirmados no reducen patrimonio efectivo",
+    name: "Gastos confirmados reducen patrimonio efectivo",
     inputs: {
       netWorth: 10000,
       investedCapital: 3000,
@@ -1747,12 +2030,12 @@ const effectiveInputsCases: EffectiveInputsCase[] = [
       expectedAnnualReturn: 7,
     },
     transactionSummary: {
-      netWorthDelta: 0,
+      netWorthDelta: -700,
       investedDelta: 200,
       recurringMonthlyExpenses: 150,
       expenseDelta: 700,
     },
-    netWorth: 10000,
+    netWorth: 9300,
     investedCapital: 3200,
     desiredMonthlySpend: 1350,
   },
@@ -1764,7 +2047,7 @@ for (const testCase of effectiveInputsCases) {
 
 const transactionSummaryCases: TransactionSummaryCase[] = [
   {
-    name: "Gasto confirmado no baja patrimonio",
+    name: "Gasto confirmado baja patrimonio",
     transactions: [
       {
         type: "gasto",
@@ -1776,9 +2059,46 @@ const transactionSummaryCases: TransactionSummaryCase[] = [
         ignored: false,
       },
     ],
-    netWorthDelta: 0,
+    netWorthDelta: -700,
     confirmedExpenses: 700,
     monthlyConfirmedExpenses: 700 / 12,
+  },
+  {
+    name: "Inversion confirmada traspasa liquidez a capital invertido",
+    transactions: [
+      {
+        type: "inversion",
+        amount: 500,
+        currency: "USD",
+        date: "2026-06-20",
+        category: "etf_usa",
+        recurring: false,
+        intent: "real",
+        ignored: false,
+      },
+    ],
+    netWorthDelta: 0,
+    investedDelta: 500,
+    confirmedExpenses: 0,
+    monthlyConfirmedExpenses: 0,
+  },
+  {
+    name: "Gasto UYU sin conversion usa fallback en vez de desaparecer",
+    transactions: [
+      {
+        type: "gasto",
+        amount: 1000,
+        currency: "UYU",
+        date: "2026-06-20",
+        category: "comida",
+        recurring: false,
+        intent: "real",
+        ignored: false,
+      },
+    ],
+    netWorthDelta: -25,
+    confirmedExpenses: 25,
+    monthlyConfirmedExpenses: 25 / 12,
   },
 ];
 
@@ -1812,7 +2132,7 @@ assertEqual(
 );
 
 console.log(
-  `Parser regression tests passed: ${cases.length}. Decision mode tests passed: ${decisionModeCases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Income increase tests passed: ${incomeIncreaseCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
+  `Parser regression tests passed: ${cases.length}. Decision mode tests passed: ${decisionModeCases.length}. Lifestyle inflation tests passed: ${lifestyleCases.length}. Income increase tests passed: ${incomeIncreaseCases.length}. Debt load tests passed: ${debtLoadCases.length}. Portfolio tests passed: ${portfolioCases.length}. Wealth roadmap tests passed: ${roadmapCases.length}. Bot Opera24hs tests passed: ${botOperaCases.length}. Weekly execution tests passed: ${weeklyExecutionCases.length}. Financial margin tests passed: ${financialMarginCases.length}. Monthly review tests passed: ${monthlyReviewCases.length}. Effective inputs tests passed: ${effectiveInputsCases.length}. Transaction summary tests passed: ${transactionSummaryCases.length}`,
 );
 
 function tx(
@@ -2066,6 +2386,7 @@ function runPortfolioCase(expected: PortfolioCase) {
   const analysis = analyzeTargetPortfolio(
     expected.settings,
     expected.transactions,
+    expected.botInvestment,
   );
   const asset = analysis.assets.find(
     (item) => item.assetClass === expected.asset,
@@ -2102,6 +2423,14 @@ function runPortfolioCase(expected: PortfolioCase) {
     expected.name,
     "asset.currentSource",
   );
+  if (expected.targetPercent !== undefined) {
+    assertEqual(
+      asset.targetPercent,
+      expected.targetPercent,
+      expected.name,
+      "asset.targetPercent",
+    );
+  }
   assertEqual(asset.status, expected.status, expected.name, "asset.status");
 
   if (expected.policyMonthlyContributionTarget !== undefined) {
@@ -2284,6 +2613,23 @@ function marginTx(
   };
 }
 
+function monthlyTx(
+  type: string,
+  amount: number,
+  date: string,
+  patch: Partial<MonthlyReviewTransaction> = {},
+): MonthlyReviewTransaction {
+  return {
+    type,
+    amount,
+    date,
+    category: "sin categoria",
+    intent: "real",
+    ignored: false,
+    ...patch,
+  };
+}
+
 function fixedMarginExpense(
   name: string,
   category: FinancialMarginFixedExpense["category"],
@@ -2417,6 +2763,53 @@ function runFinancialMarginCase(expected: FinancialMarginCase) {
   );
 }
 
+function runMonthlyReviewCase(expected: MonthlyReviewCase) {
+  const analysis = analyzeMonthlyReview({
+    transactions: expected.transactions,
+    today: new Date("2026-06-18T12:00:00Z"),
+  });
+
+  assertEqual(analysis.status, expected.status, expected.name, "status");
+  assertEqual(
+    analysis.monthlyIncome,
+    expected.monthlyIncome,
+    expected.name,
+    "monthlyIncome",
+  );
+  assertEqual(
+    analysis.monthlyExpenses,
+    expected.monthlyExpenses,
+    expected.name,
+    "monthlyExpenses",
+  );
+  assertEqual(
+    analysis.investmentAmount,
+    expected.investmentAmount,
+    expected.name,
+    "investmentAmount",
+  );
+  assertEqual(analysis.debtAdded, expected.debtAdded, expected.name, "debtAdded");
+  assertEqual(
+    analysis.bigPurchaseCount,
+    expected.bigPurchaseCount,
+    expected.name,
+    "bigPurchaseCount",
+  );
+  assertEqual(
+    analysis.emotionalPurchaseCount,
+    expected.emotionalPurchaseCount,
+    expected.name,
+    "emotionalPurchaseCount",
+  );
+  assertEqual(analysis.savingRate, expected.savingRate, expected.name, "savingRate");
+  assertEqual(
+    analysis.primaryAction,
+    expected.primaryAction,
+    expected.name,
+    "primaryAction",
+  );
+}
+
 function runEffectiveInputsCase(expected: EffectiveInputsCase) {
   const effectiveInputs = calculateEffectiveInputs(
     expected.inputs,
@@ -2442,6 +2835,14 @@ function runTransactionSummaryCase(expected: TransactionSummaryCase) {
   const summary = confirmedTransactionsSummary(expected.transactions);
 
   assertEqual(summary.netWorthDelta, expected.netWorthDelta, expected.name, "netWorthDelta");
+  if (expected.investedDelta !== undefined) {
+    assertEqual(
+      summary.investedDelta,
+      expected.investedDelta,
+      expected.name,
+      "investedDelta",
+    );
+  }
   assertEqual(
     summary.confirmedExpenses,
     expected.confirmedExpenses,

@@ -17,6 +17,7 @@ import {
   type ConfirmedFinancialTransaction,
   type FinancialNote,
 } from "./financial-notes";
+import { createMoney } from "./money";
 import {
   fixedMonthlyExpenseDraftToRow,
   fixedMonthlyExpenseFromRow,
@@ -178,7 +179,7 @@ export async function loadDashboardData(
     portfolio: portfolio.data as Parameters<typeof normalizeDashboardData>[0]["portfolio"],
     bot: bot.data
       ? {
-          name: "Bot Opera24hs",
+          name: "Bot especulacion (trading algoritmico)",
           botNumber: bot.data.bot_number,
           startDate: bot.data.start_date,
           initialCapital: bot.data.initial_capital,
@@ -617,13 +618,23 @@ function transactionToRow(
 }
 
 function transactionFromRow(row: JsonRecord): ConfirmedFinancialTransaction {
+  const amount = Number(row.amount ?? 0);
+  const currency = String(row.currency ?? "USD");
+  const usdConversion =
+    row.usd_conversion as ConfirmedFinancialTransaction["usdConversion"];
+
   return {
     id: String(row.id),
     noteId: String(row.note_id),
     noteTitle: String(row.note_title),
     type: row.type as ConfirmedFinancialTransaction["type"],
-    amount: Number(row.amount ?? 0),
-    currency: String(row.currency ?? "USD"),
+    amount,
+    currency,
+    money: createMoney({
+      amount,
+      currency,
+      usdConversion,
+    }),
     category: String(row.category ?? ""),
     date: String(row.date ?? ""),
     recurring: Boolean(row.recurring),
@@ -634,8 +645,7 @@ function transactionFromRow(row: JsonRecord): ConfirmedFinancialTransaction {
     sourceText: String(row.source_text ?? ""),
     incomeIncrease: Boolean(row.income_increase),
     ignored: Boolean(row.ignored),
-    usdConversion:
-      row.usd_conversion as ConfirmedFinancialTransaction["usdConversion"],
+    usdConversion,
     debt: row.debt as ConfirmedFinancialTransaction["debt"],
     antiErrorReview:
       row.anti_error_review as ConfirmedFinancialTransaction["antiErrorReview"],

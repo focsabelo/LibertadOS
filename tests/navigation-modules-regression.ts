@@ -20,3 +20,13 @@ assert(
   !moduleIds.includes("macro") && !moduleLabels.includes("Macro"),
   "application navigation should not expose Macro",
 );
+
+assert(
+  secondaryModuleIds.includes("revision") && secondaryModuleLabels.includes("Revision"),
+  "advanced navigation should expose monthly review",
+);
+
+assert(
+  !secondaryModuleIds.includes("semana") && !secondaryModuleLabels.includes("Semana"),
+  "advanced navigation should keep weekly execution inside Revision",
+);

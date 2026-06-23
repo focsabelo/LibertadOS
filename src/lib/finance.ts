@@ -1,3 +1,12 @@
+import {
+  DEFAULT_UYU_PER_USD_ANALYSIS_RATE,
+  createMoney,
+  normalizeCurrencyCode,
+  usdAmountForCalculation,
+  type Money,
+} from "./money";
+import { previousLocalMonthKey, toLocalMonthKey } from "./local-date";
+
 export type FreedomInputs = {
   netWorth: number;
   investedCapital: number;
@@ -26,6 +35,7 @@ export type ConfirmedSummaryTransaction = {
   type: string;
   amount: number;
   currency?: string;
+  money?: Money;
   date?: string;
   category?: string;
   recurring?: boolean;
@@ -49,6 +59,7 @@ export const DEFAULT_EMERGENCY_FUND_RATE = 0.05;
 export const DEFAULT_INVESTMENT_RATE = 0.15;
 export const LIFESTYLE_BIG_PURCHASE_THRESHOLD = 1000;
 export const LIFESTYLE_HIGH_CORE_EXPENSE_SHARE = 50;
+export { DEFAULT_UYU_PER_USD_ANALYSIS_RATE };
 
 export type CoreExpenseCategory = (typeof CORE_EXPENSE_CATEGORIES)[number];
 export type LifestyleInflationRisk = "bajo" | "medio" | "alto" | "sin-datos";
@@ -64,6 +75,7 @@ export type DebtKind =
   | "gasto_tarjeta";
 export type DebtUse = "herramienta" | "consumo" | "mixta" | "desconocida";
 export type DebtRisk = "bajo" | "medio" | "alto" | "sin_datos";
+export type DebtCertainty = "completa" | "parcial" | "insuficiente";
 export type DebtPressureRisk = "bajo" | "medio" | "alto" | "sin_datos";
 export type FinancialMarginState = "fragil" | "ajustado" | "estable" | "fuerte";
 export type ChangeJobCapacity = "baja" | "limitada" | "moderada" | "alta";
@@ -129,6 +141,7 @@ export type DebtAnalysis = {
   salaryDependencyIncrease?: number;
   use: DebtUse;
   risk: DebtRisk;
+  certainty?: DebtCertainty;
   signals: string[];
   missingFields: string[];
 };
@@ -137,6 +150,7 @@ export type LifestyleInflationTransaction = {
   type: string;
   amount: number;
   currency?: string;
+  money?: Money;
   date: string;
   category?: string;
   recurring?: boolean;
@@ -209,6 +223,7 @@ export type FinancialMarginTransaction = {
   type: string;
   amount: number;
   currency?: string;
+  money?: Money;
   date: string;
   category?: string;
   recurring?: boolean;
@@ -253,6 +268,43 @@ export type FinancialMarginAnalysis = {
   recommendation: string;
 };
 
+export type MonthlyReviewStatus = "fuerte" | "correcto" | "debil" | "alerta";
+
+export type MonthlyReviewTransaction = {
+  type: string;
+  amount: number;
+  currency?: string;
+  money?: Money;
+  date: string;
+  category?: string;
+  recurring?: boolean;
+  intent?: string;
+  ignored?: boolean;
+  usdConversion?: UsdConvertedAmount;
+  antiErrorReview?: {
+    applies?: boolean;
+    signals?: string[];
+  };
+  debt?: Partial<DebtAnalysis>;
+};
+
+export type MonthlyReviewAnalysis = {
+  monthKey: string;
+  hasConfirmedData: boolean;
+  status: MonthlyReviewStatus;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  investmentAmount: number;
+  savingsAmount: number;
+  debtAdded: number;
+  bigPurchaseCount: number;
+  emotionalPurchaseCount: number;
+  savingRate: number;
+  primaryAction: string;
+  signals: string[];
+  nextMonthFocus: string;
+};
+
 export type WeeklyExecutionItemId =
   | "review_income"
   | "review_expenses"
@@ -281,6 +333,7 @@ export type WeeklyExecutionTransaction = {
   type: string;
   amount: number;
   currency?: string;
+  money?: Money;
   date: string;
   category?: string;
   recurring?: boolean;
@@ -338,9 +391,13 @@ export type PortfolioAssetClass =
   | "emergentes"
   | "oro"
   | "bitcoin"
-  | "bienes_raices";
+  | "bienes_raices"
+  | "bot_especulacion";
 
-export type PortfolioCurrentSource = "manual" | "derivado";
+export type PortfolioCurrentSource =
+  | "snapshot"
+  | "movimientos"
+  | "snapshot_movimientos";
 export type PortfolioBalanceStatus = "sobrepeso" | "bajo_peso" | "alineado";
 
 export type TargetPortfolioTransaction = {
@@ -357,6 +414,12 @@ export type TargetPortfolioSettings = {
   policy?: Partial<InvestmentPolicySettings>;
 };
 
+export type TargetPortfolioSettingsInput = {
+  targets?: Partial<Record<PortfolioAssetClass, number>>;
+  manualAmounts?: Partial<Record<PortfolioAssetClass, number>>;
+  policy?: Partial<InvestmentPolicySettings>;
+};
+
 export type PolicyChangeFriction = "none" | "review" | "wait_48h";
 
 export type InvestmentPolicySettings = {
@@ -365,6 +428,10 @@ export type InvestmentPolicySettings = {
   emergencyFundMonths: number;
   rebalanceTolerancePercent: number;
   rebalanceFrequency: "mensual" | "trimestral" | "semestral" | "anual";
+  automaticInvestmentRule: string;
+  indexCoreRule: string;
+  incomeIncreaseRule: string;
+  weeklyReviewRule: string;
   drawdownRule: string;
   strongRallyRule: string;
   bitcoinRule: string;
@@ -412,6 +479,8 @@ export type TargetPortfolioAsset = {
   assetClass: PortfolioAssetClass;
   label: string;
   targetPercent: number;
+  snapshotAmount: number;
+  movementAmount: number;
   currentAmount: number;
   currentSource: PortfolioCurrentSource;
   currentPercent: number;
@@ -439,7 +508,7 @@ export type BotOpera24hsMonthlyResult = {
 };
 
 export type BotOpera24hsInvestment = {
-  name: "Bot Opera24hs";
+  name: "Bot especulacion (trading algoritmico)";
   botNumber: string;
   startDate: string;
   initialCapital: number;
@@ -525,16 +594,21 @@ export const PORTFOLIO_ASSET_CLASSES: readonly {
   { assetClass: "oro", label: "Oro" },
   { assetClass: "bitcoin", label: "Bitcoin" },
   { assetClass: "bienes_raices", label: "Bienes raices" },
+  {
+    assetClass: "bot_especulacion",
+    label: "Bot especulacion (trading algoritmico)",
+  },
 ];
 
 export const DEFAULT_TARGET_PORTFOLIO_SETTINGS: TargetPortfolioSettings = {
   targets: {
-    etf_usa: 45,
+    etf_usa: 40,
     etf_europa: 20,
     emergentes: 15,
     oro: 10,
     bitcoin: 5,
     bienes_raices: 5,
+    bot_especulacion: 5,
   },
   manualAmounts: {
     etf_usa: 0,
@@ -543,6 +617,7 @@ export const DEFAULT_TARGET_PORTFOLIO_SETTINGS: TargetPortfolioSettings = {
     oro: 0,
     bitcoin: 0,
     bienes_raices: 0,
+    bot_especulacion: 0,
   },
   policy: {
     monthlyContributionTarget: 1800,
@@ -550,12 +625,24 @@ export const DEFAULT_TARGET_PORTFOLIO_SETTINGS: TargetPortfolioSettings = {
     emergencyFundMonths: 6,
     rebalanceTolerancePercent: 5,
     rebalanceFrequency: "trimestral",
+    automaticInvestmentRule:
+      "Invertir mediante transferencia automatica apenas entra el dinero; no depender de motivacion ni fuerza de voluntad.",
+    indexCoreRule:
+      "La base son indices simples: ETF USA, ETF Europa y emergentes. El bot especulativo queda acotado por su porcentaje objetivo.",
+    incomeIncreaseRule:
+      "Aplicar 70/20/10 a aumentos: 70% ahorro o inversion, 20% mejora de vida y 10% gusto personal.",
+    weeklyReviewRule:
+      "Revisar numeros una vez por semana: ingresos, gastos, deuda, aporte, impulsos y proximo hito.",
     drawdownRule: "No vender por caidas de mercado sin esperar 48 horas.",
     strongRallyRule: "No aumentar riesgo por euforia sin revisar la politica.",
-    bitcoinRule: "Mantener BTC dentro del objetivo y no aumentar por FOMO.",
-    goldRule: "Usar oro como proteccion, no como apuesta de rendimiento.",
-    individualStocksRule: "Solo permitir acciones individuales fuera del plan base.",
-    realEstateRule: "Evaluar inmuebles por flujo, deuda y margen mensual.",
+    bitcoinRule:
+      "Comprar BTC directo como activo, mantenerlo dentro del objetivo y no aumentarlo por FOMO.",
+    goldRule:
+      "Usar oro preferentemente via ETF con replica fisica como proteccion, no como apuesta de rendimiento.",
+    individualStocksRule:
+      "Acciones individuales y trading fuera del bot especulativo requieren analisis, seguimiento y regla explicita.",
+    realEstateRule:
+      "Inmuebles despues de construir capital: evaluar garantia, deuda, flujo, TAE y margen mensual.",
     noTouchRule:
       "No tocar el plan por panico, FOMO o comparacion sin esperar 48 horas.",
     lastReviewedAt: undefined,
@@ -564,7 +651,7 @@ export const DEFAULT_TARGET_PORTFOLIO_SETTINGS: TargetPortfolioSettings = {
 };
 
 export const DEFAULT_BOT_OPERA24HS_INVESTMENT: BotOpera24hsInvestment = {
-  name: "Bot Opera24hs",
+  name: "Bot especulacion (trading algoritmico)",
   botNumber: "Bot 1",
   startDate: "2026-01-01",
   initialCapital: 1000,
@@ -677,6 +764,7 @@ export function confirmedTransactionsSummary(
       const amount = transactionAmountForUsdAnalysis(transaction);
 
       if (transaction.type === "gasto") {
+        summary.netWorthDelta -= amount;
         summary.confirmedExpenses += amount;
       }
 
@@ -690,7 +778,6 @@ export function confirmedTransactionsSummary(
       }
 
       if (transaction.type === "inversion") {
-        summary.netWorthDelta += amount;
         summary.investedDelta += amount;
       }
 
@@ -1134,12 +1221,21 @@ export function analyzeFinancialMargin({
 
     return total + fixedExpenseAmountForUsdAnalysis(expense, uyuPerUsdRate);
   }, 0);
-  const confirmedRecurringExpenses = currentMonthTransactions.reduce(
+  const coveredFixedExpenseIndexes = new Set<number>();
+  const uncoveredRecurringTransactions = currentMonthTransactions.filter(
+    (transaction) =>
+      transaction.type === "gasto" &&
+      transaction.recurring &&
+      !consumeMatchingFixedExpense({
+        transaction,
+        fixedExpenses,
+        coveredFixedExpenseIndexes,
+        uyuPerUsdRate,
+      }),
+  );
+  const uncoveredRecurringTransactionSet = new Set(uncoveredRecurringTransactions);
+  const confirmedRecurringExpenses = uncoveredRecurringTransactions.reduce(
     (total, transaction) => {
-      if (transaction.type !== "gasto" || !transaction.recurring) {
-        return total;
-      }
-
       return total + transactionAmountForUsdAnalysis(transaction);
     },
     0,
@@ -1192,7 +1288,8 @@ export function analyzeFinancialMargin({
     currentMonthTransactions.reduce((total, transaction) => {
       if (
         transaction.type !== "gasto" ||
-        !isEssentialMarginCategory(transaction.category)
+        !isEssentialMarginCategory(transaction.category) ||
+        (transaction.recurring && !uncoveredRecurringTransactionSet.has(transaction))
       ) {
         return total;
       }
@@ -1279,6 +1376,251 @@ export function analyzeFinancialMargin({
     }),
     recommendation: financialMarginRecommendation(state),
   };
+}
+
+export function analyzeMonthlyReview({
+  transactions,
+  today = new Date(),
+}: {
+  transactions: MonthlyReviewTransaction[];
+  today?: Date;
+}): MonthlyReviewAnalysis {
+  const monthKey = toMonthKey(today);
+  const monthTransactions = transactions.filter(
+    (transaction) =>
+      isRealTransaction(transaction) && toMonthKey(transaction.date) === monthKey,
+  );
+  const monthlyIncome = roundToTwo(
+    sumMonthlyReviewTransactions(monthTransactions, "ingreso"),
+  );
+  const monthlyExpenses = roundToTwo(
+    sumMonthlyReviewTransactions(monthTransactions, "gasto"),
+  );
+  const investmentAmount = roundToTwo(
+    sumMonthlyReviewTransactions(monthTransactions, "inversion"),
+  );
+  const debtAdded = roundToTwo(
+    monthTransactions.reduce((total, transaction) => {
+      if (transaction.type !== "deuda") {
+        return total;
+      }
+
+      return (
+        total +
+        transactionValueForUsdAnalysis(
+          transaction,
+          transaction.debt?.monthlyMarginImpact ?? 0,
+        )
+      );
+    }, 0),
+  );
+  const savingsAmount = roundToTwo(
+    Math.max(0, monthlyIncome - monthlyExpenses - debtAdded),
+  );
+  const savingRate =
+    monthlyIncome > 0 ? roundToTwo((savingsAmount / monthlyIncome) * 100) : 0;
+  const bigPurchaseCount = monthTransactions.filter(
+    (transaction) =>
+      transaction.type === "gasto" &&
+      transactionAmountForUsdAnalysis(transaction) >=
+        LIFESTYLE_BIG_PURCHASE_THRESHOLD,
+  ).length;
+  const emotionalPurchaseCount = monthTransactions.filter(
+    (transaction) =>
+      transaction.type === "gasto" &&
+      transaction.antiErrorReview?.applies === true,
+  ).length;
+  const hasConfirmedData = monthTransactions.length > 0;
+  const status = monthlyReviewStatus({
+    hasConfirmedData,
+    monthlyIncome,
+    savingRate,
+    investmentAmount,
+    debtAdded,
+    bigPurchaseCount,
+    emotionalPurchaseCount,
+  });
+  const signals = monthlyReviewSignals({
+    hasConfirmedData,
+    monthlyIncome,
+    monthlyExpenses,
+    investmentAmount,
+    debtAdded,
+    bigPurchaseCount,
+    emotionalPurchaseCount,
+    savingRate,
+  });
+
+  return {
+    monthKey,
+    hasConfirmedData,
+    status,
+    monthlyIncome,
+    monthlyExpenses,
+    investmentAmount,
+    savingsAmount,
+    debtAdded,
+    bigPurchaseCount,
+    emotionalPurchaseCount,
+    savingRate,
+    primaryAction: monthlyReviewPrimaryAction({
+      status,
+      hasConfirmedData,
+      debtAdded,
+      emotionalPurchaseCount,
+      investmentAmount,
+    }),
+    signals,
+    nextMonthFocus: monthlyReviewNextMonthFocus(status),
+  };
+}
+
+function sumMonthlyReviewTransactions(
+  transactions: MonthlyReviewTransaction[],
+  type: string,
+) {
+  return transactions.reduce((total, transaction) => {
+    if (transaction.type !== type) {
+      return total;
+    }
+
+    return total + transactionAmountForUsdAnalysis(transaction);
+  }, 0);
+}
+
+function monthlyReviewStatus({
+  hasConfirmedData,
+  monthlyIncome,
+  savingRate,
+  investmentAmount,
+  debtAdded,
+  bigPurchaseCount,
+  emotionalPurchaseCount,
+}: {
+  hasConfirmedData: boolean;
+  monthlyIncome: number;
+  savingRate: number;
+  investmentAmount: number;
+  debtAdded: number;
+  bigPurchaseCount: number;
+  emotionalPurchaseCount: number;
+}): MonthlyReviewStatus {
+  if (!hasConfirmedData || monthlyIncome <= 0) {
+    return "alerta";
+  }
+
+  if (debtAdded > 0 && (emotionalPurchaseCount > 0 || savingRate < 15)) {
+    return "alerta";
+  }
+
+  if (savingRate < 0) {
+    return "alerta";
+  }
+
+  if (savingRate < 15 || emotionalPurchaseCount > 0 || bigPurchaseCount >= 2) {
+    return "debil";
+  }
+
+  if (savingRate >= 30 && investmentAmount > 0 && debtAdded === 0) {
+    return "fuerte";
+  }
+
+  return "correcto";
+}
+
+function monthlyReviewSignals({
+  hasConfirmedData,
+  monthlyIncome,
+  monthlyExpenses,
+  investmentAmount,
+  debtAdded,
+  bigPurchaseCount,
+  emotionalPurchaseCount,
+  savingRate,
+}: {
+  hasConfirmedData: boolean;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  investmentAmount: number;
+  debtAdded: number;
+  bigPurchaseCount: number;
+  emotionalPurchaseCount: number;
+  savingRate: number;
+}) {
+  if (!hasConfirmedData) {
+    return ["No hay movimientos reales confirmados para cerrar este mes."];
+  }
+
+  const signals = [
+    `Ingreso confirmado del mes: ${formatCompactCurrency(monthlyIncome)}.`,
+    `Gasto confirmado del mes: ${formatCompactCurrency(monthlyExpenses)}.`,
+    `Tasa de ahorro estimada: ${roundToTwo(savingRate)}%.`,
+  ];
+
+  if (investmentAmount > 0) {
+    signals.push(`Inversion realizada: ${formatCompactCurrency(investmentAmount)}.`);
+  }
+
+  if (debtAdded > 0) {
+    signals.push(`Deuda nueva o presion mensual: ${formatCompactCurrency(debtAdded)}.`);
+  }
+
+  if (bigPurchaseCount > 0) {
+    signals.push(`${bigPurchaseCount} compra(s) grande(s) confirmada(s).`);
+  }
+
+  if (emotionalPurchaseCount > 0) {
+    signals.push(`${emotionalPurchaseCount} compra(s) con senales de impulso.`);
+  }
+
+  return signals;
+}
+
+function monthlyReviewPrimaryAction({
+  status,
+  hasConfirmedData,
+  debtAdded,
+  emotionalPurchaseCount,
+  investmentAmount,
+}: {
+  status: MonthlyReviewStatus;
+  hasConfirmedData: boolean;
+  debtAdded: number;
+  emotionalPurchaseCount: number;
+  investmentAmount: number;
+}) {
+  if (!hasConfirmedData) {
+    return "Confirmar ingresos y gastos reales del mes antes de sacar conclusiones.";
+  }
+
+  if (debtAdded > 0 || emotionalPurchaseCount > 0) {
+    return "Revisar deuda nueva y compras impulsivas antes de planear el mes siguiente.";
+  }
+
+  if (status === "fuerte" && investmentAmount > 0) {
+    return "Cerrar el mes y sostener el aporte antes de subir gastos fijos.";
+  }
+
+  if (status === "debil") {
+    return "Elegir un gasto revisable y proteger el aporte del mes siguiente.";
+  }
+
+  if (status === "alerta") {
+    return "Cerrar datos faltantes y congelar gastos nuevos hasta entender el mes.";
+  }
+
+  return "Mantener captura semanal y definir una accion concreta para el mes siguiente.";
+}
+
+function monthlyReviewNextMonthFocus(status: MonthlyReviewStatus) {
+  const focus = {
+    fuerte: "Sostener aporte, no subir gastos fijos y revisar cartera.",
+    correcto: "Cerrar una mejora concreta sin cambiar el plan base.",
+    debil: "Reducir una fuga de gasto y preservar margen mensual.",
+    alerta: "Ordenar datos, deuda y compras grandes antes de avanzar.",
+  };
+
+  return focus[status];
 }
 
 export function analyzeWeeklyExecution({
@@ -1557,24 +1899,32 @@ function debtFreedomWarning(risk: DebtPressureRisk) {
 }
 
 export function analyzeTargetPortfolio(
-  settings: TargetPortfolioSettings,
+  settings: TargetPortfolioSettingsInput,
   transactions: TargetPortfolioTransaction[] = [],
+  botInvestment?: BotOpera24hsInvestment,
 ): TargetPortfolioAnalysis {
   const normalizedSettings = normalizeTargetPortfolioSettings(settings);
-  const derivedAmounts = targetPortfolioDerivedAmounts(transactions);
+  const derivedAmounts = targetPortfolioDerivedAmounts(
+    transactions,
+    botInvestment,
+  );
   const targetTotalPercent = PORTFOLIO_ASSET_CLASSES.reduce(
     (total, asset) => total + normalizedSettings.targets[asset.assetClass],
     0,
   );
   const currentAmounts = PORTFOLIO_ASSET_CLASSES.map((asset) => {
-    const derivedAmount = derivedAmounts[asset.assetClass];
-    const manualAmount = normalizedSettings.manualAmounts[asset.assetClass];
+    const movementAmount = derivedAmounts[asset.assetClass];
+    const snapshotAmount = normalizedSettings.manualAmounts[asset.assetClass];
 
     return {
       ...asset,
-      currentAmount: derivedAmount > 0 ? derivedAmount : manualAmount,
-      currentSource:
-        derivedAmount > 0 ? ("derivado" as const) : ("manual" as const),
+      snapshotAmount,
+      movementAmount,
+      currentAmount: snapshotAmount + movementAmount,
+      currentSource: portfolioCurrentSource({
+        snapshotAmount,
+        movementAmount,
+      }),
     };
   });
   const totalCurrentAmount = currentAmounts.reduce(
@@ -1599,6 +1949,8 @@ export function analyzeTargetPortfolio(
       assetClass: asset.assetClass,
       label: asset.label,
       targetPercent,
+      snapshotAmount: asset.snapshotAmount,
+      movementAmount: asset.movementAmount,
       currentAmount: asset.currentAmount,
       currentSource: asset.currentSource,
       currentPercent,
@@ -1688,6 +2040,38 @@ export function analyzeInvestmentPolicy({
       "Tolerancia de rebalanceo",
       policy.rebalanceTolerancePercent,
       "Definir tolerancia antes de rebalancear.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "automatic_investment_rule",
+      "Inversion automatica",
+      policy.automaticInvestmentRule,
+      "Escribir regla para invertir sin depender de motivacion.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "index_core_rule",
+      "Indices primero",
+      policy.indexCoreRule,
+      "Escribir regla para priorizar cartera indexada simple.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "income_increase_rule",
+      "Aumentos 70/20/10",
+      policy.incomeIncreaseRule,
+      "Escribir regla para aumentos de ingreso.",
+    ),
+  );
+  addRule(
+    policyTextRule(
+      "weekly_review_rule",
+      "Revision semanal",
+      policy.weeklyReviewRule,
+      "Escribir regla de revision semanal.",
     ),
   );
   addRule(
@@ -1891,18 +2275,51 @@ export function analyzeBotOpera24hs(
 }
 
 export function normalizeTargetPortfolioSettings(
-  settings: Partial<TargetPortfolioSettings> = {},
+  settings: TargetPortfolioSettingsInput = {},
 ): TargetPortfolioSettings {
+  const rawTargets = settings.targets ?? {};
+  const legacyAssetClasses: PortfolioAssetClass[] = [
+    "etf_usa",
+    "etf_europa",
+    "emergentes",
+    "oro",
+    "bitcoin",
+    "bienes_raices",
+  ];
+  const hasExplicitBotTarget = Object.prototype.hasOwnProperty.call(
+    rawTargets,
+    "bot_especulacion",
+  );
+  const hasCompleteLegacyTargets = legacyAssetClasses.every((assetClass) =>
+    Object.prototype.hasOwnProperty.call(rawTargets, assetClass),
+  );
+  const shouldMigrateLegacyTargets =
+    !hasExplicitBotTarget && hasCompleteLegacyTargets;
+  const legacyBotTarget = shouldMigrateLegacyTargets
+    ? DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets.bot_especulacion
+    : 0;
+
   return {
     targets: PORTFOLIO_ASSET_CLASSES.reduce(
-      (targets, asset) => ({
-        ...targets,
-        [asset.assetClass]: Math.max(
-          0,
-          settings.targets?.[asset.assetClass] ??
-            DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets[asset.assetClass],
-        ),
-      }),
+      (targets, asset) => {
+        const defaultTarget =
+          DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets[asset.assetClass];
+        const configuredTarget = rawTargets[asset.assetClass];
+        const target =
+          shouldMigrateLegacyTargets && asset.assetClass === "bot_especulacion"
+            ? legacyBotTarget
+            : shouldMigrateLegacyTargets && asset.assetClass === "etf_usa"
+              ? Math.max(
+                  0,
+                  (configuredTarget ?? defaultTarget) - legacyBotTarget,
+                )
+              : (configuredTarget ?? defaultTarget);
+
+        return {
+          ...targets,
+          [asset.assetClass]: Math.max(0, target),
+        };
+      },
       {} as Record<PortfolioAssetClass, number>,
     ),
     manualAmounts: PORTFOLIO_ASSET_CLASSES.reduce(
@@ -1924,7 +2341,7 @@ export function normalizeBotOpera24hsInvestment(
   investment: Partial<BotOpera24hsInvestment> = {},
 ): BotOpera24hsInvestment {
   return {
-    name: "Bot Opera24hs",
+    name: "Bot especulacion (trading algoritmico)",
     botNumber:
       typeof investment.botNumber === "string" && investment.botNumber.trim()
         ? investment.botNumber
@@ -2051,6 +2468,22 @@ export function normalizeInvestmentPolicySettings(
         defaultPolicy.rebalanceTolerancePercent,
     ),
     rebalanceFrequency,
+    automaticInvestmentRule: normalizeTextSetting(
+      settings.automaticInvestmentRule,
+      defaultPolicy.automaticInvestmentRule,
+    ),
+    indexCoreRule: normalizeTextSetting(
+      settings.indexCoreRule,
+      defaultPolicy.indexCoreRule,
+    ),
+    incomeIncreaseRule: normalizeTextSetting(
+      settings.incomeIncreaseRule,
+      defaultPolicy.incomeIncreaseRule,
+    ),
+    weeklyReviewRule: normalizeTextSetting(
+      settings.weeklyReviewRule,
+      defaultPolicy.weeklyReviewRule,
+    ),
     drawdownRule: normalizeTextSetting(
       settings.drawdownRule,
       defaultPolicy.drawdownRule,
@@ -2133,6 +2566,7 @@ function normalizeOptionalDate(value: unknown) {
 
 function targetPortfolioDerivedAmounts(
   transactions: TargetPortfolioTransaction[],
+  botInvestment?: BotOpera24hsInvestment,
 ) {
   const amounts = { ...DEFAULT_TARGET_PORTFOLIO_SETTINGS.manualAmounts };
 
@@ -2152,6 +2586,13 @@ function targetPortfolioDerivedAmounts(
     if (assetClass) {
       amounts[assetClass] += transaction.amount;
     }
+  }
+
+  if (botInvestment) {
+    const botAnalysis = analyzeBotOpera24hs(botInvestment);
+
+    amounts.bot_especulacion +=
+      botAnalysis.currentOperationalCapital + botAnalysis.pendingCapital;
   }
 
   return amounts;
@@ -2179,6 +2620,14 @@ export function portfolioAssetClassFromCategory(
       "inmueble",
       "propiedad",
     ],
+    bot_especulacion: [
+      "bot especulacion",
+      "bot especulativo",
+      "bot opera24hs",
+      "botopera24hs",
+      "opera24hs",
+      "trading algoritmico",
+    ],
   };
 
   return PORTFOLIO_ASSET_CLASSES.find((asset) =>
@@ -2203,6 +2652,24 @@ function portfolioBalanceStatus(
   }
 
   return "alineado";
+}
+
+function portfolioCurrentSource({
+  snapshotAmount,
+  movementAmount,
+}: {
+  snapshotAmount: number;
+  movementAmount: number;
+}): PortfolioCurrentSource {
+  if (snapshotAmount > 0 && movementAmount > 0) {
+    return "snapshot_movimientos";
+  }
+
+  if (movementAmount > 0) {
+    return "movimientos";
+  }
+
+  return "snapshot";
 }
 
 function normalizePortfolioCategory(value: string) {
@@ -2565,13 +3032,10 @@ function isRealFinancialMarginTransaction(
   );
 }
 
-function normalizeCurrencyCode(currency?: string) {
-  return (currency ?? "USD").trim().toUpperCase();
-}
-
 function transactionAmountForUsdAnalysis(transaction: {
   amount: number;
   currency?: string;
+  money?: Money;
   usdConversion?: UsdConvertedAmount;
 }) {
   return transactionValueForUsdAnalysis(transaction, transaction.amount);
@@ -2579,59 +3043,87 @@ function transactionAmountForUsdAnalysis(transaction: {
 
 function transactionValueForUsdAnalysis(
   transaction: {
+    amount?: number;
     currency?: string;
+    money?: Money;
     usdConversion?: UsdConvertedAmount;
   },
   value: number,
 ) {
-  const amount = normalizePositiveNumber(value);
-  const currency = normalizeCurrencyCode(transaction.currency);
-
-  if (currency === "USD") {
-    return amount;
+  if (
+    transaction.money &&
+    normalizePositiveNumber(transaction.amount ?? 0) ===
+      normalizePositiveNumber(value)
+  ) {
+    return usdAmountForCalculation(transaction.money, "Transaction money");
   }
 
-  if (currency === "UYU") {
-    const conversion = transaction.usdConversion;
-    const convertedCurrency = normalizeCurrencyCode(conversion?.convertedCurrency);
-
-    if (
-      convertedCurrency === "USD" &&
-      Number.isFinite(conversion?.convertedAmount) &&
-      Number.isFinite(conversion?.originalAmount) &&
-      conversion?.originalAmount === amount
-    ) {
-      return normalizePositiveNumber(conversion.convertedAmount ?? 0);
-    }
-
-    if (Number.isFinite(conversion?.rate) && (conversion?.rate ?? 0) > 0) {
-      return roundToTwo(amount / (conversion?.rate ?? 1));
-    }
-  }
-
-  return 0;
+  return usdAmountForCalculation(
+    createMoney({
+      amount: value,
+      currency: transaction.currency,
+      usdConversion: transaction.usdConversion,
+    }),
+    "Transaction amount",
+  );
 }
 
 function fixedExpenseAmountForUsdAnalysis(
   expense: FinancialMarginFixedExpense,
   uyuPerUsdRate?: number,
 ) {
-  const amount = normalizePositiveNumber(expense.monthlyAmount);
   const currency = normalizeCurrencyCode(expense.currency);
 
-  if (currency === "USD") {
-    return amount;
-  }
+  return usdAmountForCalculation(
+    createMoney({
+      amount: expense.monthlyAmount,
+      currency,
+      fallbackRates:
+        currency === "UYU" && uyuPerUsdRate
+          ? { UYU: uyuPerUsdRate }
+          : undefined,
+    }),
+    "Fixed monthly expense",
+  );
+}
 
-  if (currency === "UYU") {
-    const rate = normalizePositiveNumber(uyuPerUsdRate ?? 0);
+function consumeMatchingFixedExpense({
+  transaction,
+  fixedExpenses,
+  coveredFixedExpenseIndexes,
+  uyuPerUsdRate,
+}: {
+  transaction: FinancialMarginTransaction;
+  fixedExpenses: FinancialMarginFixedExpense[];
+  coveredFixedExpenseIndexes: Set<number>;
+  uyuPerUsdRate?: number;
+}) {
+  const transactionCategory = normalizeMarginCategory(transaction.category);
+  const transactionAmount = transactionAmountForUsdAnalysis(transaction);
 
-    if (rate > 0) {
-      return roundToTwo(amount / rate);
+  for (const [index, expense] of fixedExpenses.entries()) {
+    if (expense.active === false || coveredFixedExpenseIndexes.has(index)) {
+      continue;
     }
+
+    if (normalizeMarginCategory(expense.category) !== transactionCategory) {
+      continue;
+    }
+
+    if (
+      Math.abs(
+        fixedExpenseAmountForUsdAnalysis(expense, uyuPerUsdRate) -
+          transactionAmount,
+      ) > 0.01
+    ) {
+      continue;
+    }
+
+    coveredFixedExpenseIndexes.add(index);
+    return true;
   }
 
-  return 0;
+  return false;
 }
 
 function normalizePositiveNumber(value: number) {
@@ -2968,16 +3460,9 @@ function totalCoreExpenses(month: LifestyleInflationMonth) {
 }
 
 function previousMonth(monthKey: string) {
-  const [year, month] = monthKey.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 2, 1));
-
-  return toMonthKey(date);
+  return previousLocalMonthKey(monthKey);
 }
 
 function toMonthKey(value: Date | string) {
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 7);
-  }
-
-  return value.slice(0, 7);
+  return toLocalMonthKey(value);
 }

@@ -12,6 +12,10 @@ Libertad OS is for one primary user managing personal finances with a long-term 
 
 Libertad OS helps measure financial freedom, understand the impact of spending and investing decisions, and convert messy personal notes into confirmed financial data. Success means the user can capture expenses, income, investments, debts, and decisions quickly, review the detected structure, and only then let confirmed data affect the dashboard.
 
+## Investment Philosophy Source
+
+The user's personal investment philosophy lives in `docs/FILOSOFIA_INVERSION.md`. Use it as product context for financial behavior, investment sequencing, milestone meaning, lifestyle-inflation guardrails, debt framing, and tone. It complements this product brief; it does not override confirmed formulas, changelogged behavior, or explicit roadmap rules.
+
 ## Brand Personality
 
 Calm, serious, premium. The product should feel like iCloud Notes crossed with a focused financial dashboard: familiar enough to trust, restrained enough to use every day, and motivating without sounding like a trading app.

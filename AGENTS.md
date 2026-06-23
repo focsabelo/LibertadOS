@@ -8,7 +8,7 @@ This project uses a newer Next.js version with breaking changes. When touching N
 
 Libertad OS is a personal finance app for tracking the path toward financial freedom. It pairs a serious, minimal dashboard with an iCloud Notes-like capture and review flow for natural-language financial notes.
 
-Use `PRODUCT.md` as the product source of truth when product intent, scope, or tone is unclear. Keep changes scoped; improve the existing Next.js / TypeScript / Tailwind app, do not rebuild or replace the stack without explicit permission.
+Use `PRODUCT.md` as the product source of truth when product intent, scope, or tone is unclear. Use `docs/FILOSOFIA_INVERSION.md` as the user's personal investment philosophy and business-context source for financial behavior, investment sequencing, debt framing, lifestyle-inflation guardrails, and tone. Keep changes scoped; improve the existing Next.js / TypeScript / Tailwind app, do not rebuild or replace the stack without explicit permission.
 
 ## Core Product Rules
 
@@ -67,6 +67,8 @@ Use `PRODUCT.md` as the product source of truth when product intent, scope, or t
 
 ## Workflow / Git Rules
 
+Use proportional verification. Do not run `npm run lint` or `npm run build` automatically after every small change; prefer the narrowest check that gives useful signal for the files touched. Run heavier checks when risk justifies them, before meaningful commits, and before push/deploy work.
+
 Run from the project root when relevant:
 
 ```bash
@@ -77,6 +79,8 @@ npm run dev
 ```
 
 - Use `npm run dev` for local development; the app usually runs at `http://127.0.0.1:3000` or `http://localhost:3000`.
+- For minor copy, documentation, instruction-only, or very narrow style changes, skip heavy verification unless explicitly requested.
+- For parser, financial-logic, persistence, Supabase, routing, config, or user-flow changes, run the most relevant focused tests/checks first, then escalate to lint/build only if the scope or risk calls for it.
 - Before any meaningful commit, run relevant checks, review `git status`, review `git diff`, and ensure no secrets or unrelated files are included.
 - Stage only relevant files; do not use `git add .` blindly.
 - Keep commits scoped to the actual task.
@@ -89,6 +93,7 @@ npm run dev
 ## Important Files
 
 - Product intent: `PRODUCT.md`
+- Investment philosophy: `docs/FILOSOFIA_INVERSION.md`
 - Main app surface: `src/components/libertad-dashboard.tsx`
 - Notes UI: `src/components/financial-notes-module.tsx`
 - Financial formulas: `src/lib/finance.ts`
