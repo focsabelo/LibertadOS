@@ -80,11 +80,14 @@ assertEqual(mapped.monthlyAmount, 1800, "mapped expense restores amount");
 assertEqual(mapped.active, false, "mapped expense restores active flag");
 assertEqual(mapped.note, "Fibra optica", "mapped expense restores note");
 
-const totals = summarizeActiveFixedExpenses([
-  netflix,
-  rent,
-  { ...mapped, active: false },
-]);
+const totals = summarizeActiveFixedExpenses(
+  [
+    netflix,
+    rent,
+    { ...mapped, active: false },
+  ],
+  { uyuPerUsdRate: 42 },
+);
 
 assertEqual(totals.length, 2, "active summary ignores inactive expenses");
 assert(
@@ -94,6 +97,20 @@ assert(
 assert(
   totals.some((total) => total.currency === "UYU" && total.amount === 42000),
   "active summary keeps UYU total",
+);
+
+const uyuTotal = totals.find((total) => total.currency === "UYU");
+
+assert(uyuTotal, "active summary exposes UYU total");
+assertEqual(
+  uyuTotal.money.usdAmount,
+  1000,
+  "active summary attaches Money with USD equivalent",
+);
+assertEqual(
+  uyuTotal.money.conversionStatus,
+  "fallback",
+  "active summary marks fixed expense conversion as fallback",
 );
 
 assertEqual(

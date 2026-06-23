@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:parser": "node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\" && tsc -p tsconfig.json --noEmit false --module commonjs --moduleResolution node --outDir .tmp/parser-tests && node .tmp/parser-tests/tests/parser-regression.js && node .tmp/parser-tests/tests/money-regression.js && node .tmp/parser-tests/tests/fixed-monthly-expenses-regression.js && node .tmp/parser-tests/tests/auth-state-regression.js && node .tmp/parser-tests/tests/supabase-persistence-regression.js && node .tmp/parser-tests/tests/navigation-modules-regression.js && node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\""
+    "test:parser": "node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\" && tsc -p tsconfig.json --noEmit false --module commonjs --moduleResolution node --outDir .tmp/parser-tests && node .tmp/parser-tests/tests/parser-regression.js && node .tmp/parser-tests/tests/money-regression.js && node .tmp/parser-tests/tests/fixed-monthly-expenses-regression.js && node .tmp/parser-tests/tests/fire-levers-regression.js && node .tmp/parser-tests/tests/freedom-progress-regression.js && node .tmp/parser-tests/tests/debt-finance-regression.js && node .tmp/parser-tests/tests/auth-state-regression.js && node .tmp/parser-tests/tests/supabase-persistence-regression.js && node .tmp/parser-tests/tests/navigation-modules-regression.js && node -e \"require('fs').rmSync('.tmp/parser-tests',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

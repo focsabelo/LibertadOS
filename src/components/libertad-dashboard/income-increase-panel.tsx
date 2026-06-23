@@ -102,8 +102,8 @@ export function IncomeIncreasePanel({
                 Regla editable
               </h3>
               <p className="mt-1 text-sm leading-6 text-stone-600">
-                Los porcentajes deben sumar 100. La separacion de colchon usa el
-                5% existente como recordatorio, no como movimiento real.
+                Los porcentajes deben sumar 100. La regla mantiene el dinero
+                nuevo separado antes de que se vuelva gasto recurrente.
               </p>
             </div>
             <span
@@ -163,11 +163,6 @@ export function IncomeIncreasePanel({
               value={currencyFormatter.format(analysis.plan.personalTreat)}
               detail="Permiso acotado separado del plan."
             />
-            <FireRow
-              label="Separar al colchon"
-              value={currencyFormatter.format(analysis.plan.emergencyFund)}
-              detail="Recordatorio del 5% antes de decidir el resto."
-            />
           </div>
         </section>
       </div>
@@ -189,7 +184,7 @@ export function IncomeIncreasePanel({
                 )} si ejecutas la regla.`}
               />
               <FireRow
-                label="Impacto FIRE potencial"
+                label="Numero de libertad potencial"
                 value={currencyFormatter.format(analysis.fireImpact)}
                 detail="Lectura simulada; no cambia el numero real."
               />

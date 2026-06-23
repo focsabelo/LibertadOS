@@ -246,7 +246,7 @@ function detectDecisionType(
     return "inversion_potencial";
   }
 
-  if (type === "ahorro" || hasAny(text, ["ahorrar", "colchon", "emergencia"])) {
+  if (type === "ahorro" || hasAny(text, ["ahorrar"])) {
     return "ahorro_potencial";
   }
 

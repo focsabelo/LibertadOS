@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## Unreleased
+
+* Revision pasa a la navegacion principal y Avanzado queda ordenado desde Decisiones hacia Politica, Cartera, Deuda, Palancas y Roadmap.
+
+## v2.3.4 - Estilo Sin Seccion Dedicada
+
+* La navegacion avanzada elimina Estilo como seccion dedicada.
+* La regla editable de aumentos e ingresos extra se integra dentro de Politica.
+* La lectura de inflacion del estilo de vida se integra dentro de Revision.
+* Los enlaces antiguos `#aumentos` redirigen a `#politica` y `#estilo` redirige a `#revision`.
+* Las tarjetas de capital invertido muestran siempre un valor numerico, incluso cuando es cero.
+
+## v2.3.3 - Palancas FIRE con Gastos Fijos
+
+* Palancas FIRE ahora incluye gastos fijos activos en la lectura mensual, anual y x25.
+* Vivienda, transporte y comida de gastos fijos activos aparecen en categorias criticas, evitando duplicar un fijo si ya existe una transaccion recurrente confirmada equivalente.
+* La UI reemplaza etiquetas FIRE crudas por explicaciones breves del numero de libertad financiera.
+* Las etiquetas visibles priorizan "numero de libertad financiera" y dejan x25 como formula explicativa para evitar confusion.
+* Palancas aclara que la cifra derivada de gastos confirmados es impacto sobre el numero de libertad, no una meta separada.
+* El progreso hacia libertad financiera ahora se calcula contra capital invertido/productivo, separandolo del patrimonio neto total.
+* Agregada regresion para que transporte fijo activo impacte Palancas FIRE.
+
+## v2.3.2 - Money, Deuda Modular y Confianza del Parser
+
+* Gastos fijos mensuales ahora resumen totales con `Money`, incluyendo equivalente USD y estado de conversion.
+* La cartera objetivo usa `Money` en movimientos confirmados de inversion para evitar sumar pesos como dolares.
+* Las formulas de deuda finita se extraen a `src/lib/debt-finance.ts` y se reexportan desde `finance.ts`.
+* El parser agrega `confidence` por item detectado: alta, media o baja segun extraccion, intencion, categoria y certeza de deuda.
+* La UI de notas muestra la confianza de cada item detectado antes de confirmar.
+* Agregadas regresiones para Money en gastos fijos, Money en cartera, formulas de deuda y confianza del parser.
+
 ## v2.3.1 - Confiabilidad de Margen, Fechas, Cartera y Deuda
 
 * Margen financiero evita duplicar un gasto fijo cuando el pago recurrente confirmado coincide con un gasto fijo activo.
@@ -42,7 +73,7 @@
 
 * Nueva seccion Aumentos para aplicar una regla editable 70/20/10 sobre aumentos confirmados.
 * El analizador reutiliza ingresos y gastos confirmados para separar aumento, gasto absorbido y margen capturado.
-* La vista muestra inversion sugerida, mejora de vida, gusto personal, separacion de colchon e impacto FIRE simulado.
+* La vista muestra inversion sugerida, mejora de vida, gusto personal e impacto FIRE simulado.
 * Las sugerencias no crean movimientos reales ni modifican patrimonio, cartera, deuda o roadmap sin confirmacion manual.
 
 ## v2.0.9 - Navegacion avanzada
@@ -62,7 +93,7 @@
 * Total de gastos fijos mensuales muestra el equivalente USD cuando hay gastos activos en UYU y cotizacion disponible.
 * Margen financiero destaca el margen estimado cuando hay ingreso mensual fijo estimado cargado en configuracion.
 * Margen disponible usa ingreso fijo estimado como fallback cuando todavia no hay ingreso confirmado del mes, sin sumar ambos.
-* Margen disponible positivo se muestra en verde aunque el estado general siga fragil por colchon o deuda.
+* Margen disponible positivo se muestra en verde aunque el estado general siga fragil por deuda.
 * Configuracion renombra el ingreso fijo estimado como ingreso base mensual para aclarar que alimenta el margen operativo.
 
 ## v2.0.7 - Gastos fijos UYU en margen
@@ -146,7 +177,7 @@
 * Categorías vivienda, transporte y comida.
 * Escenarios de reducción de gasto.
 * Regla 70/20/10.
-* Sugerencia de colchón del 5%.
+* Sugerencia de inversion automatica.
 
 ## v1.3.0
 
@@ -170,7 +201,7 @@
 * Riesgo bajo, medio, alto o sin datos usando solo transacciones confirmadas.
 * Calculo del porcentaje del aumento de ingreso absorbido por nuevos gastos.
 * Senales para gasto que acompana ingresos, caida de tasa de ahorro, compras grandes recientes y gastos criticos.
-* Recomendaciones conectadas con Palancas FIRE, regla 70/20/10, colchon 5%, compras grandes y vivienda/transporte/comida.
+* Recomendaciones conectadas con Palancas FIRE, regla 70/20/10, compras grandes y vivienda/transporte/comida.
 * Tests de la logica de inflacion del estilo de vida, incluyendo intenciones y sugerencias no confirmadas fuera del conteo real.
 
 ## v1.5.0 - Deuda Real / TAE
@@ -266,7 +297,7 @@
 ## v2.0.0 - Margen Financiero
 
 * Nueva seccion Margen para medir libertad mensual real.
-* Calculo de margen disponible, meses de colchon, presion de deuda, tasa de ahorro y estado general.
+* Calculo de margen disponible, presion de deuda, tasa de ahorro y estado general.
 * Gastos fijos activos conectados como supuestos separados, sin convertirlos en transacciones confirmadas.
 * Separacion entre gastos esenciales, no esenciales, deuda mensual y punto de tranquilidad.
 * Dashboard operativo muestra el margen mensual y prioriza la revision cuando el estado es fragil o ajustado.

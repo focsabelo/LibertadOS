@@ -219,7 +219,7 @@ export function DecisionModePanel({
               tone={analysis.estimatedMonthlyImpact > 0 ? "amber" : "neutral"}
             />
             <MetricCard
-              label="Impacto FIRE"
+              label="Impacto en numero de libertad"
               value={formatCurrencyAmount("USD", analysis.estimatedFireImpact)}
               tone={analysis.estimatedFireImpact > 0 ? "red" : "neutral"}
             />

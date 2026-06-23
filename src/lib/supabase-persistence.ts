@@ -641,6 +641,8 @@ function transactionFromRow(row: JsonRecord): ConfirmedFinancialTransaction {
     impulse: Boolean(row.impulse),
     coreExpense: Boolean(row.core_expense),
     intent: row.intent as ConfirmedFinancialTransaction["intent"],
+    confidence:
+      (row.confidence as ConfirmedFinancialTransaction["confidence"]) ?? "alta",
     freedomImpact: Number(row.freedom_impact ?? 0),
     sourceText: String(row.source_text ?? ""),
     incomeIncrease: Boolean(row.income_increase),

@@ -46,6 +46,7 @@ import {
   type DecisionModeRiskLevel,
   type DecisionModeType,
 } from "../src/lib/decision-mode";
+import { createMoney } from "../src/lib/money";
 
 type ExpectedCase = {
   text: string;
@@ -58,6 +59,7 @@ type ExpectedCase = {
   incomeIncrease?: boolean;
   freedomImpact?: number;
   freedomImpactGreaterThan?: number;
+  confidence?: "alta" | "media" | "baja";
   antiErrorEnemies?: string[];
   antiErrorSignals?: string[];
   antiErrorAction?: string;
@@ -94,6 +96,7 @@ const cases: ExpectedCase[] = [
     amount: 350,
     category: "comida",
     freedomImpact: 8750,
+    confidence: "alta",
   },
   {
     text: "Gaste 350 en comida",
@@ -294,6 +297,7 @@ const cases: ExpectedCase[] = [
       certainty: "parcial",
       missingFields: ["capital original", "tasa anual"],
     },
+    confidence: "media",
   },
   {
     text: "12 cuotas de 200",
@@ -328,6 +332,7 @@ const cases: ExpectedCase[] = [
       missingFields: ["cuota mensual", "plazo", "tasa anual"],
       signals: ["Faltan cuota, plazo o tasa para estimar presion mensual."],
     },
+    confidence: "baja",
   },
   {
     text: "No saque el prestamo de 5000",
@@ -459,6 +464,10 @@ function runCase(expected: ExpectedCase) {
   assertOptionalEqual(item, expected, "category");
   assertOptionalEqual(item, expected, "incomeIncrease");
   assertOptionalEqual(item, expected, "freedomImpact");
+
+  if (expected.confidence !== undefined) {
+    assertEqual(item.confidence, expected.confidence, expected.text, "confidence");
+  }
 
   if (expected.freedomImpactGreaterThan !== undefined) {
     assert(
@@ -868,7 +877,6 @@ type IncomeIncreaseCase = {
   investment?: number;
   lifestyle?: number;
   treat?: number;
-  emergencyFund?: number;
   absorbedByExpenses?: number;
   capturedForFreedom?: number;
   fireImpact?: number;
@@ -948,7 +956,6 @@ const lifestyleCases: LifestyleCase[] = [
       tx("ingreso", 1500, "2026-06-10"),
       tx("gasto", 500, "2026-06-11"),
       tx("inversion", incomeRuleSuggestion(500, true).suggestedInvestment, "2026-06-12"),
-      tx("ahorro", incomeRuleSuggestion(500, true).emergencyFund, "2026-06-12"),
     ],
     risk: "bajo",
     currentExpenses: 500,
@@ -1017,7 +1024,6 @@ const incomeIncreaseCases: IncomeIncreaseCase[] = [
     investment: 350,
     lifestyle: 100,
     treat: 50,
-    emergencyFund: 25,
     absorbedByExpenses: 0,
     capturedForFreedom: 500,
     fireImpact: 105000,
@@ -1153,15 +1159,11 @@ type FinancialMarginCase = {
   variableMonthlyExpenses: number;
   debtMonthlyPayments: number;
   availableMonthlyMargin: number;
-  emergencyFund: number;
-  monthsCovered: number;
   savingRate: number;
   debtPressurePercent: number;
   essentialExpenses?: number;
   nonEssentialExpenses?: number;
   state: "fragil" | "ajustado" | "estable" | "fuerte";
-  calmPointDistance: number;
-  changeJobCapacity: "baja" | "limitada" | "moderada" | "alta";
 };
 
 type EffectiveInputsCase = {
@@ -1419,6 +1421,27 @@ const portfolioCases: PortfolioCase[] = [
     asset: "etf_usa",
     currentAmount: 1250,
     currentSource: "snapshot_movimientos",
+    status: "sobrepeso",
+  },
+  {
+    name: "Cartera usa Money para inversiones confirmadas en UYU",
+    settings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
+    transactions: [
+      portfolioTx("etf_usa", 40000, {
+        currency: "UYU",
+        money: createMoney({
+          amount: 40000,
+          currency: "UYU",
+          fallbackRates: { UYU: 40 },
+        }),
+      }),
+    ],
+    targetTotalPercent: 100,
+    targetWarning: false,
+    totalCurrentAmount: 1000,
+    asset: "etf_usa",
+    currentAmount: 1000,
+    currentSource: "movimientos",
     status: "sobrepeso",
   },
 ];
@@ -1690,10 +1713,10 @@ const weeklyExecutionCases: WeeklyExecutionCase[] = [
       completedItemIds: ["review_income", "review_expenses"],
     },
     status: "incompleto",
-    scorePercent: 20,
+    scorePercent: 22,
     completedCount: 2,
     recommendation: "Revisar compra emocional y esperar 48 horas antes de repetirla.",
-    overdueAction: "Separar 5% para colchon",
+    overdueAction: "Revisar tasa de ahorro",
   },
   {
     name: "Semana completa queda cumplida sin gamificacion",
@@ -1719,12 +1742,11 @@ for (const testCase of weeklyExecutionCases) {
 
 const financialMarginCases: FinancialMarginCase[] = [
   {
-    name: "Margen fuerte separa gastos fijos, variables, deuda y colchon",
+    name: "Margen fuerte separa gastos fijos, variables y deuda",
     transactions: [
       marginTx("ingreso", 5000, "2026-06-02", { category: "salario" }),
       marginTx("gasto", 350, "2026-06-05", { category: "comida" }),
       marginTx("gasto", 250, "2026-06-06", { category: "salida" }),
-      marginTx("ahorro", 12000, "2026-03-10", { category: "colchon" }),
       marginTx("deuda", 2400, "2026-05-10", {
         debt: {
           kind: "compra_cuotas",
@@ -1753,20 +1775,15 @@ const financialMarginCases: FinancialMarginCase[] = [
     variableMonthlyExpenses: 600,
     debtMonthlyPayments: 200,
     availableMonthlyMargin: 2480,
-    emergencyFund: 12000,
-    monthsCovered: 4.76,
     savingRate: 49.6,
     debtPressurePercent: 4,
-    state: "estable",
-    calmPointDistance: 3120,
-    changeJobCapacity: "moderada",
+    state: "fuerte",
   },
   {
     name: "Margen fragil ignora intenciones y expone dependencia del sueldo",
     transactions: [
       marginTx("ingreso", 2200, "2026-06-02"),
       marginTx("gasto", 500, "2026-06-08", { category: "comida" }),
-      marginTx("ahorro", 400, "2026-04-01", { category: "colchon" }),
       marginTx("deuda", 3000, "2026-05-10", {
         debt: {
           kind: "prestamo",
@@ -1790,13 +1807,9 @@ const financialMarginCases: FinancialMarginCase[] = [
     variableMonthlyExpenses: 500,
     debtMonthlyPayments: 650,
     availableMonthlyMargin: -200,
-    emergencyFund: 400,
-    monthsCovered: 0.17,
     savingRate: -9.09,
     debtPressurePercent: 29.55,
     state: "fragil",
-    calmPointDistance: 14000,
-    changeJobCapacity: "baja",
   },
   {
     name: "Margen convierte gastos UYU confirmados a USD",
@@ -1832,13 +1845,9 @@ const financialMarginCases: FinancialMarginCase[] = [
     variableMonthlyExpenses: 9.13,
     debtMonthlyPayments: 0,
     availableMonthlyMargin: -9.13,
-    emergencyFund: 0,
-    monthsCovered: 0,
     savingRate: 0,
     debtPressurePercent: 0,
     state: "fragil",
-    calmPointDistance: 54.78,
-    changeJobCapacity: "baja",
   },
   {
     name: "Margen convierte gastos fijos UYU esenciales a USD",
@@ -1850,15 +1859,11 @@ const financialMarginCases: FinancialMarginCase[] = [
     variableMonthlyExpenses: 0,
     debtMonthlyPayments: 0,
     availableMonthlyMargin: 1900,
-    emergencyFund: 0,
-    monthsCovered: 0,
     savingRate: 95,
     debtPressurePercent: 0,
     essentialExpenses: 100,
     nonEssentialExpenses: 0,
-    state: "fragil",
-    calmPointDistance: 600,
-    changeJobCapacity: "baja",
+    state: "fuerte",
   },
   {
     name: "Pago confirmado de gasto fijo no duplica margen mensual",
@@ -1875,15 +1880,11 @@ const financialMarginCases: FinancialMarginCase[] = [
     variableMonthlyExpenses: 0,
     debtMonthlyPayments: 0,
     availableMonthlyMargin: 1800,
-    emergencyFund: 0,
-    monthsCovered: 0,
     savingRate: 60,
     debtPressurePercent: 0,
     essentialExpenses: 1200,
     nonEssentialExpenses: 0,
-    state: "fragil",
-    calmPointDistance: 7200,
-    changeJobCapacity: "baja",
+    state: "fuerte",
   },
 ];
 
@@ -1899,7 +1900,7 @@ const monthlyReviewCases: MonthlyReviewCase[] = [
       monthlyTx("gasto", 1200, "2026-06-05", { category: "vivienda" }),
       monthlyTx("gasto", 500, "2026-06-07", { category: "comida" }),
       monthlyTx("inversion", 1000, "2026-06-10", { category: "ETF USA" }),
-      monthlyTx("ahorro", 300, "2026-06-12", { category: "colchon" }),
+      monthlyTx("ahorro", 300, "2026-06-12", { category: "broker" }),
     ],
     status: "fuerte",
     monthlyIncome: 5000,
@@ -2008,7 +2009,7 @@ assertEqual(
 assertEqual(
   estimatedIncomeMargin.availableMonthlyMarginTone,
   "green",
-  "Margen disponible positivo usa tono verde aunque falte colchon",
+  "Margen disponible positivo usa tono verde sin requisito extra",
   "availableMonthlyMarginTone",
 );
 assert(
@@ -2264,15 +2265,6 @@ function runIncomeIncreaseCase(expected: IncomeIncreaseCase) {
       expected.treat,
       expected.name,
       "plan.personalTreat",
-    );
-  }
-
-  if (expected.emergencyFund !== undefined) {
-    assertEqual(
-      analysis.plan.emergencyFund,
-      expected.emergencyFund,
-      expected.name,
-      "plan.emergencyFund",
     );
   }
 
@@ -2723,8 +2715,6 @@ function runFinancialMarginCase(expected: FinancialMarginCase) {
     expected.name,
     "availableMonthlyMargin",
   );
-  assertEqual(analysis.emergencyFund, expected.emergencyFund, expected.name, "emergencyFund");
-  assertAlmostEqual(analysis.monthsCovered, expected.monthsCovered, expected.name, "monthsCovered");
   assertAlmostEqual(analysis.savingRate, expected.savingRate, expected.name, "savingRate");
   assertAlmostEqual(
     analysis.debtPressurePercent,
@@ -2749,18 +2739,6 @@ function runFinancialMarginCase(expected: FinancialMarginCase) {
     );
   }
   assertEqual(analysis.state, expected.state, expected.name, "state");
-  assertEqual(
-    analysis.calmPointDistance,
-    expected.calmPointDistance,
-    expected.name,
-    "calmPointDistance",
-  );
-  assertEqual(
-    analysis.changeJobCapacity,
-    expected.changeJobCapacity,
-    expected.name,
-    "changeJobCapacity",
-  );
 }
 
 function runMonthlyReviewCase(expected: MonthlyReviewCase) {

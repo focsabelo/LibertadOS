@@ -236,6 +236,7 @@ const transaction: ConfirmedFinancialTransaction = {
   impulse: false,
   coreExpense: true,
   intent: "real",
+  confidence: "alta",
   freedomImpact: 2500,
   sourceText: "Gaste 100 en comida",
   ignored: false,

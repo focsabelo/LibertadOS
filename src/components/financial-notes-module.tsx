@@ -869,7 +869,7 @@ export function FinancialNotesModule({
                       aria-label="Nota financiera"
                       className="libertad-field libertad-ledger h-full min-h-[430px] w-full resize-none rounded-md bg-white px-4 py-3 text-lg leading-8 text-stone-950 placeholder:text-stone-500 sm:min-h-[540px] lg:min-h-[620px]"
                       name="financial-note"
-                      placeholder="Ej: Hoy gaste 350 en comida, 90 en transporte y 1200 en ropa. Tambien cobre 28000. Separar 5% para colchon y 15% para inversion…"
+                      placeholder="Ej: Hoy gaste 350 en comida, 90 en transporte y 1200 en ropa. Tambien cobre 28000 e inverti 15% en el broker…"
                       value={selectedNote.body}
                       onChange={(event) => updateSelectedNote(event.target.value)}
                     />
@@ -909,7 +909,7 @@ export function FinancialNotesModule({
                           value={selectedSummary.antiError.toString()}
                         />
                         <PreviewStat
-                          label="Impacto real x25"
+                          label="Impacto real en libertad"
                           value={currencyFormatter.format(
                             selectedSummary.freedomImpact,
                           )}
@@ -1109,12 +1109,12 @@ function DetectedItemCard({
   const blocked = item.intent !== "real";
   const fireImpactLabel =
     item.intent === "real" || item.intent === "negado"
-      ? "Impacto x25"
-      : "Impacto x25 potencial";
+      ? "Impacto en libertad"
+      : "Impacto potencial en libertad";
   const antiErrorFireImpactLabel =
     item.intent === "real" || item.intent === "negado"
-      ? "Impacto FIRE"
-      : "Impacto FIRE potencial";
+      ? "Impacto en libertad"
+      : "Impacto potencial en libertad";
 
   return (
     <div
@@ -1132,6 +1132,10 @@ function DetectedItemCard({
             <p className="text-sm font-semibold text-stone-950">
               {financialTypeLabel(item.type)}
             </p>
+            <StatusPill
+              label={`confianza ${item.confidence ?? "sin datos"}`}
+              tone={parserConfidenceTone(item.confidence)}
+            />
             {item.coreExpense ? <StatusPill label="clave" tone="green" /> : null}
             {item.impulse ? <StatusPill label="impulsivo" tone="amber" /> : null}
             {item.antiErrorReview?.applies ? (
@@ -1486,7 +1490,7 @@ function DebtCostPanel({ debt }: { debt: DebtAnalysis }) {
           value={formatOptionalMoney(debt.annualCost)}
         />
         <SuggestionLine
-          label="Impacto FIRE"
+          label="Impacto en libertad"
           value={formatOptionalMoney(debt.fireImpact)}
         />
         <SuggestionLine
@@ -1539,10 +1543,6 @@ function IncomeSuggestionPanel({ item }: { item: DetectedFinancialItem }) {
         </span>
       </div>
       <div className="mt-2 grid gap-1.5 rounded-md border border-white/70 bg-white/70 p-3">
-        <SuggestionLine
-          label="5% para colchon"
-          value={currencyFormatter.format(suggestion.emergencyFund)}
-        />
         <SuggestionLine
           label={
             suggestion.isIncreaseRule
@@ -1678,6 +1678,18 @@ function riskTone(riskLevel: AntiErrorRiskLevel) {
   }
 
   return "green";
+}
+
+function parserConfidenceTone(confidence?: DetectedFinancialItem["confidence"]) {
+  if (confidence === "alta") {
+    return "green";
+  }
+
+  if (confidence === "media") {
+    return "amber";
+  }
+
+  return "neutral";
 }
 
 function debtRiskTone(riskLevel: DebtRisk) {

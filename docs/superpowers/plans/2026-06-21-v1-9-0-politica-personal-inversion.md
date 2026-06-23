@@ -90,7 +90,6 @@ export type PolicyChangeFriction = "none" | "review" | "wait_48h";
 export type InvestmentPolicySettings = {
   monthlyContributionTarget: number;
   salaryInvestmentPercent: number;
-  emergencyFundMonths: number;
   rebalanceTolerancePercent: number;
   rebalanceFrequency: "mensual" | "trimestral" | "semestral" | "anual";
   drawdownRule: string;
@@ -183,7 +182,6 @@ export function analyzeInvestmentPolicy({
 
   addRule(policyNumberRule("monthly_contribution_target", "Aporte mensual objetivo", policy.monthlyContributionTarget, "Definir un aporte mensual objetivo."));
   addRule(policyNumberRule("salary_investment_percent", "Porcentaje de salario", policy.salaryInvestmentPercent, "Definir que parte del ingreso se invierte."));
-  addRule(policyNumberRule("emergency_fund_months", "Colchon objetivo", policy.emergencyFundMonths, "Definir cuantos meses de colchon proteger."));
   addRule(policyNumberRule("rebalance_tolerance", "Tolerancia de rebalanceo", policy.rebalanceTolerancePercent, "Definir tolerancia antes de rebalancear."));
   addRule(policyTextRule("drawdown_rule", "Caidas fuertes", policy.drawdownRule, "Escribir regla ante caidas fuertes."));
   addRule(policyTextRule("strong_rally_rule", "Subidas fuertes", policy.strongRallyRule, "Escribir regla ante subidas fuertes."));
@@ -521,7 +519,6 @@ function PolicyEditor({
   const numericFields = [
     ["monthlyContributionTarget", "Aporte mensual objetivo", "USD"],
     ["salaryInvestmentPercent", "Salario a invertir", "%"],
-    ["emergencyFundMonths", "Colchon objetivo", "meses"],
     ["rebalanceTolerancePercent", "Tolerancia desbalance", "pp"],
   ] as const;
   const ruleFields = [

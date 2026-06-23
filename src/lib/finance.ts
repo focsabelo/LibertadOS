@@ -6,6 +6,11 @@ import {
   type Money,
 } from "./money";
 import { previousLocalMonthKey, toLocalMonthKey } from "./local-date";
+export {
+  calculateDebtPayment,
+  calculateDebtTotals,
+  estimateEffectiveAnnualRate,
+} from "./debt-finance";
 
 export type FreedomInputs = {
   netWorth: number;
@@ -55,7 +60,6 @@ export type ConfirmedTransactionsSummary = EffectiveInputsTransactionSummary & {
 
 export const CORE_EXPENSE_CATEGORIES = ["vivienda", "transporte", "comida"] as const;
 export const FIRE_REDUCTION_LEVELS = [10, 50, 100, 250] as const;
-export const DEFAULT_EMERGENCY_FUND_RATE = 0.05;
 export const DEFAULT_INVESTMENT_RATE = 0.15;
 export const LIFESTYLE_BIG_PURCHASE_THRESHOLD = 1000;
 export const LIFESTYLE_HIGH_CORE_EXPENSE_SHARE = 50;
@@ -78,10 +82,8 @@ export type DebtRisk = "bajo" | "medio" | "alto" | "sin_datos";
 export type DebtCertainty = "completa" | "parcial" | "insuficiente";
 export type DebtPressureRisk = "bajo" | "medio" | "alto" | "sin_datos";
 export type FinancialMarginState = "fragil" | "ajustado" | "estable" | "fuerte";
-export type ChangeJobCapacity = "baja" | "limitada" | "moderada" | "alta";
 
 export type IncomeRuleSuggestion = {
-  emergencyFund: number;
   suggestedInvestment: number;
   savingRate: number;
   lifestyleUpgrade: number;
@@ -96,7 +98,6 @@ export type IncomeIncreaseRuleSettings = {
 };
 
 export type IncomeIncreasePlan = {
-  emergencyFund: number;
   investment: number;
   lifestyleUpgrade: number;
   personalTreat: number;
@@ -252,20 +253,20 @@ export type FinancialMarginAnalysis = {
   debtMonthlyPayments: number;
   availableMonthlyMargin: number;
   estimatedAvailableMonthlyMargin: number;
-  emergencyFund: number;
   monthlyBurnRate: number;
-  monthsCovered: number;
   savingRate: number;
   debtPressurePercent: number;
   essentialExpenses: number;
   nonEssentialExpenses: number;
-  calmPointAmount: number;
-  calmPointDistance: number;
   state: FinancialMarginState;
-  changeJobCapacity: ChangeJobCapacity;
   paycheckDependency: "alta" | "media" | "baja";
   signals: string[];
   recommendation: string;
+};
+
+export type FireLeversSummaryOptions = {
+  fixedMonthlyExpenses?: FinancialMarginFixedExpense[];
+  uyuPerUsdRate?: number;
 };
 
 export type MonthlyReviewStatus = "fuerte" | "correcto" | "debil" | "alerta";
@@ -309,7 +310,6 @@ export type WeeklyExecutionItemId =
   | "review_income"
   | "review_expenses"
   | "review_saving_rate"
-  | "separate_emergency_fund"
   | "confirm_monthly_investment"
   | "detect_emotional_purchases"
   | "detect_fomo_impulse"
@@ -403,6 +403,9 @@ export type PortfolioBalanceStatus = "sobrepeso" | "bajo_peso" | "alineado";
 export type TargetPortfolioTransaction = {
   type: string;
   amount: number;
+  currency?: string;
+  money?: Money;
+  usdConversion?: UsdConvertedAmount;
   category?: string;
   intent?: string;
   ignored?: boolean;
@@ -425,7 +428,6 @@ export type PolicyChangeFriction = "none" | "review" | "wait_48h";
 export type InvestmentPolicySettings = {
   monthlyContributionTarget: number;
   salaryInvestmentPercent: number;
-  emergencyFundMonths: number;
   rebalanceTolerancePercent: number;
   rebalanceFrequency: "mensual" | "trimestral" | "semestral" | "anual";
   automaticInvestmentRule: string;
@@ -622,7 +624,6 @@ export const DEFAULT_TARGET_PORTFOLIO_SETTINGS: TargetPortfolioSettings = {
   policy: {
     monthlyContributionTarget: 1800,
     salaryInvestmentPercent: 20,
-    emergencyFundMonths: 6,
     rebalanceTolerancePercent: 5,
     rebalanceFrequency: "trimestral",
     automaticInvestmentRule:
@@ -708,7 +709,6 @@ export const WEEKLY_EXECUTION_ITEMS: readonly WeeklyExecutionItem[] = [
   { id: "review_income", label: "Revisar ingresos confirmados" },
   { id: "review_expenses", label: "Revisar gastos confirmados" },
   { id: "review_saving_rate", label: "Revisar tasa de ahorro" },
-  { id: "separate_emergency_fund", label: "Separar 5% para colchon" },
   { id: "confirm_monthly_investment", label: "Confirmar aporte del mes" },
   { id: "detect_emotional_purchases", label: "Detectar compras emocionales" },
   { id: "detect_fomo_impulse", label: "Detectar FOMO o impulso" },
@@ -735,12 +735,41 @@ export function annualSpend(monthlySpend: number) {
   return Math.max(0, monthlySpend) * 12;
 }
 
-export function completionPercent(netWorth: number, target: number) {
+export function completionPercent(currentAmount: number, target: number) {
   if (target <= 0) {
     return 0;
   }
 
-  return clampPercent((Math.max(0, netWorth) / target) * 100);
+  return clampPercent((Math.max(0, currentAmount) / target) * 100);
+}
+
+export function freedomProgressMetrics({
+  investedCapital,
+  targetAmount,
+  monthlyContribution,
+  annualReturnPercent,
+}: {
+  investedCapital: number;
+  targetAmount: number;
+  monthlyContribution: number;
+  annualReturnPercent: number;
+}) {
+  const currentAmount = Math.max(0, investedCapital);
+  const target = Math.max(0, targetAmount);
+  const remaining = Math.max(0, target - currentAmount);
+  const years = estimateYearsToTarget({
+    currentAmount,
+    targetAmount: target,
+    monthlyContribution,
+    annualReturnPercent,
+  });
+
+  return {
+    currentAmount,
+    completed: completionPercent(currentAmount, target),
+    remaining,
+    years,
+  };
 }
 
 export function calculateEffectiveInputs(
@@ -758,8 +787,11 @@ export function calculateEffectiveInputs(
 
 export function confirmedTransactionsSummary(
   transactions: ConfirmedSummaryTransaction[],
+  options: FireLeversSummaryOptions = {},
 ): ConfirmedTransactionsSummary {
-  return transactions.reduce<ConfirmedTransactionsSummary>(
+  const fixedExpenses = options.fixedMonthlyExpenses ?? [];
+  const coveredFixedExpenseIndexes = new Set<number>();
+  const summary = transactions.reduce<ConfirmedTransactionsSummary>(
     (summary, transaction) => {
       const amount = transactionAmountForUsdAnalysis(transaction);
 
@@ -783,6 +815,12 @@ export function confirmedTransactionsSummary(
 
       if (transaction.type === "gasto" && transaction.recurring) {
         summary.recurringMonthlyExpenses += amount;
+        consumeMatchingFixedExpense({
+          transaction,
+          fixedExpenses,
+          coveredFixedExpenseIndexes,
+          uyuPerUsdRate: options.uyuPerUsdRate,
+        });
       }
 
       if (transaction.type === "gasto") {
@@ -851,6 +889,32 @@ export function confirmedTransactionsSummary(
       },
     },
   );
+
+  fixedExpenses.forEach((expense, index) => {
+    if (expense.active === false || coveredFixedExpenseIndexes.has(index)) {
+      return;
+    }
+
+    const monthlyExpense = fixedExpenseAmountForUsdAnalysis(
+      expense,
+      options.uyuPerUsdRate,
+    );
+
+    summary.monthlyConfirmedExpenses += monthlyExpense;
+    summary.annualConfirmedExpenses += monthlyExpense * 12;
+    summary.confirmedFireNumber += freedomNumber(monthlyExpense);
+
+    if (
+      CORE_EXPENSE_CATEGORIES.includes(
+        expense.category as CoreExpenseCategory,
+      )
+    ) {
+      summary.coreMonthlyExpenses[expense.category as CoreExpenseCategory] +=
+        monthlyExpense;
+    }
+  });
+
+  return summary;
 }
 
 export function estimateYearsToTarget({
@@ -993,131 +1057,6 @@ function yearsToMonths(years: number) {
   return Math.max(0, years * 12);
 }
 
-export function calculateDebtPayment({
-  principal,
-  annualRate,
-  termMonths,
-}: {
-  principal: number;
-  annualRate: number;
-  termMonths: number;
-}) {
-  const principalAmount = Math.max(0, principal);
-  const months = Math.max(0, Math.round(termMonths));
-
-  if (principalAmount <= 0 || months <= 0) {
-    return 0;
-  }
-
-  const monthlyRate = Math.pow(1 + Math.max(0, annualRate) / 100, 1 / 12) - 1;
-
-  if (monthlyRate <= 0) {
-    return principalAmount / months;
-  }
-
-  return (
-    (principalAmount * monthlyRate) /
-    (1 - Math.pow(1 + monthlyRate, -months))
-  );
-}
-
-export function estimateEffectiveAnnualRate({
-  principal,
-  installmentAmount,
-  termMonths,
-}: {
-  principal: number;
-  installmentAmount: number;
-  termMonths: number;
-}) {
-  const principalAmount = Math.max(0, principal);
-  const payment = Math.max(0, installmentAmount);
-  const months = Math.max(0, Math.round(termMonths));
-
-  if (principalAmount <= 0 || payment <= 0 || months <= 0) {
-    return 0;
-  }
-
-  if (payment * months <= principalAmount) {
-    return 0;
-  }
-
-  let low = 0;
-  let high = 1;
-
-  for (let iteration = 0; iteration < 80; iteration += 1) {
-    const mid = (low + high) / 2;
-    const presentValue =
-      (payment * (1 - Math.pow(1 + mid, -months))) / mid;
-
-    if (presentValue > principalAmount) {
-      low = mid;
-    } else {
-      high = mid;
-    }
-  }
-
-  return (Math.pow(1 + (low + high) / 2, 12) - 1) * 100;
-}
-
-export function calculateDebtTotals({
-  principal,
-  installmentAmount,
-  termMonths,
-  annualRate,
-  monthlyContribution,
-}: {
-  principal?: number;
-  installmentAmount?: number;
-  termMonths?: number;
-  annualRate?: number;
-  monthlyContribution?: number;
-}) {
-  const principalAmount = Math.max(0, principal ?? 0);
-  const months = Math.max(0, Math.round(termMonths ?? 0));
-  const payment =
-    installmentAmount && installmentAmount > 0
-      ? installmentAmount
-      : principalAmount > 0 && annualRate !== undefined && months > 0
-        ? calculateDebtPayment({
-            principal: principalAmount,
-            annualRate,
-            termMonths: months,
-          })
-        : 0;
-  const totalCost = payment > 0 && months > 0 ? payment * months : undefined;
-  const totalInterest =
-    totalCost !== undefined && principalAmount > 0
-      ? Math.max(0, totalCost - principalAmount)
-      : undefined;
-  const annualCost =
-    payment > 0 ? payment * (months > 0 ? Math.min(months, 12) : 12) : 0;
-  const fireImpact = payment > 0 ? freedomNumber(payment) : 0;
-  const effectiveAnnualRate =
-    principalAmount > 0 && payment > 0 && months > 0
-      ? estimateEffectiveAnnualRate({
-          principal: principalAmount,
-          installmentAmount: payment,
-          termMonths: months,
-        })
-      : annualRate;
-  const salaryDependencyIncrease =
-    payment > 0 && (monthlyContribution ?? 0) > 0
-      ? (payment / Math.max(1, monthlyContribution ?? 0)) * 100
-      : undefined;
-
-  return {
-    installmentAmount: payment,
-    totalCost,
-    totalInterest,
-    annualCost,
-    monthlyMarginImpact: payment,
-    fireImpact,
-    effectiveAnnualRate,
-    salaryDependencyIncrease,
-  };
-}
-
 export function analyzeConfirmedDebtLoad(
   transactions: ConfirmedDebtLoadTransaction[],
   monthlyContribution = 0,
@@ -1198,14 +1137,12 @@ export function analyzeFinancialMargin({
   transactions,
   fixedExpenses = [],
   today = new Date(),
-  calmPointMonths = 6,
   estimatedMonthlyIncome = 0,
   uyuPerUsdRate,
 }: {
   transactions: FinancialMarginTransaction[];
   fixedExpenses?: FinancialMarginFixedExpense[];
   today?: Date;
-  calmPointMonths?: number;
   estimatedMonthlyIncome?: number;
   uyuPerUsdRate?: number;
 }): FinancialMarginAnalysis {
@@ -1275,13 +1212,6 @@ export function analyzeFinancialMargin({
 
     return total + transactionAmountForUsdAnalysis(transaction);
   }, 0);
-  const emergencyFund = realTransactions.reduce((total, transaction) => {
-    if (transaction.type !== "ahorro" || !isEmergencyFundCategory(transaction.category)) {
-      return total;
-    }
-
-    return total + transactionAmountForUsdAnalysis(transaction);
-  }, 0);
   const essentialExpenses =
     debtMonthlyPayments +
     sumFixedExpensesByEssentialCategory(fixedExpenses, uyuPerUsdRate) +
@@ -1316,8 +1246,6 @@ export function analyzeFinancialMargin({
   });
   const estimatedAvailableMonthlyMargin =
     normalizedEstimatedMonthlyIncome - totalOutflow;
-  const monthsCovered =
-    totalOutflow > 0 ? roundToTwo(emergencyFund / totalOutflow) : 0;
   const savingRate =
     marginMonthlyIncome > 0
       ? roundToTwo((availableMonthlyMargin / marginMonthlyIncome) * 100)
@@ -1326,20 +1254,15 @@ export function analyzeFinancialMargin({
     marginMonthlyIncome > 0
       ? roundToTwo((debtMonthlyPayments / marginMonthlyIncome) * 100)
       : 0;
-  const calmPointAmount = totalOutflow * Math.max(0, calmPointMonths);
-  const calmPointDistance = Math.max(0, calmPointAmount - emergencyFund);
   const state = financialMarginState({
     monthlyIncome: marginMonthlyIncome,
     availableMonthlyMargin,
     savingRate,
-    monthsCovered,
     debtPressurePercent,
   });
-  const changeJobCapacity = marginChangeJobCapacity(monthsCovered);
   const paycheckDependency = marginPaycheckDependency({
     monthlyIncome: marginMonthlyIncome,
     availableMonthlyMargin,
-    monthsCovered,
   });
 
   return {
@@ -1353,26 +1276,19 @@ export function analyzeFinancialMargin({
     debtMonthlyPayments,
     availableMonthlyMargin,
     estimatedAvailableMonthlyMargin,
-    emergencyFund,
     monthlyBurnRate: totalOutflow,
-    monthsCovered,
     savingRate,
     debtPressurePercent,
     essentialExpenses,
     nonEssentialExpenses,
-    calmPointAmount,
-    calmPointDistance,
     state,
-    changeJobCapacity,
     paycheckDependency,
     signals: financialMarginSignals({
       monthlyIncome,
       estimatedMonthlyIncome: normalizedEstimatedMonthlyIncome,
       marginIncomeSource,
       availableMonthlyMargin,
-      monthsCovered,
       debtPressurePercent,
-      emergencyFund,
     }),
     recommendation: financialMarginRecommendation(state),
   };
@@ -1757,10 +1673,6 @@ function weeklyExecutionItemDetail(
     return `${summary.newDebtCount} deudas confirmadas esta semana.`;
   }
 
-  if (itemId === "separate_emergency_fund") {
-    return "Marca este punto despues de separar el dinero.";
-  }
-
   if (itemId === "detect_fomo_impulse") {
     return "Revisa FOMO, comparacion e impulso antes de repetir compras.";
   }
@@ -1803,10 +1715,6 @@ function weeklyExecutionRecommendation({
 
   if (newDebtCount > 0) {
     return "Abrir deuda y revisar la presion mensual antes de asumir otra cuota.";
-  }
-
-  if (!completedItemIds.has("separate_emergency_fund") && weekIncome > 0) {
-    return `Separar ${Math.round(DEFAULT_EMERGENCY_FUND_RATE * 100)}% del ingreso confirmado para colchon.`;
   }
 
   if (investmentCount === 0) {
@@ -2024,14 +1932,6 @@ export function analyzeInvestmentPolicy({
       "Porcentaje de salario",
       policy.salaryInvestmentPercent,
       "Definir que parte del ingreso se invierte.",
-    ),
-  );
-  addRule(
-    policyNumberRule(
-      "emergency_fund_months",
-      "Colchon objetivo",
-      policy.emergencyFundMonths,
-      "Definir cuantos meses de colchon proteger.",
     ),
   );
   addRule(
@@ -2459,10 +2359,6 @@ export function normalizeInvestmentPolicySettings(
     salaryInvestmentPercent: clampPercent(
       settings.salaryInvestmentPercent ?? defaultPolicy.salaryInvestmentPercent,
     ),
-    emergencyFundMonths: Math.max(
-      0,
-      settings.emergencyFundMonths ?? defaultPolicy.emergencyFundMonths,
-    ),
     rebalanceTolerancePercent: clampPercent(
       settings.rebalanceTolerancePercent ??
         defaultPolicy.rebalanceTolerancePercent,
@@ -2584,7 +2480,7 @@ function targetPortfolioDerivedAmounts(
     const assetClass = portfolioAssetClassFromCategory(transaction.category);
 
     if (assetClass) {
-      amounts[assetClass] += transaction.amount;
+      amounts[assetClass] += transactionAmountForUsdAnalysis(transaction);
     }
   }
 
@@ -2707,7 +2603,6 @@ export function incomeRuleSuggestion(
 
   if (isIncrease) {
     return {
-      emergencyFund: base * DEFAULT_EMERGENCY_FUND_RATE,
       suggestedInvestment: base * 0.7,
       savingRate: 70,
       lifestyleUpgrade: base * 0.2,
@@ -2716,13 +2611,11 @@ export function incomeRuleSuggestion(
     };
   }
 
-  const emergencyFund = base * DEFAULT_EMERGENCY_FUND_RATE;
   const suggestedInvestment = base * DEFAULT_INVESTMENT_RATE;
 
   return {
-    emergencyFund,
     suggestedInvestment,
-    savingRate: (DEFAULT_EMERGENCY_FUND_RATE + DEFAULT_INVESTMENT_RATE) * 100,
+    savingRate: DEFAULT_INVESTMENT_RATE * 100,
     lifestyleUpgrade: 0,
     personalTreat: 0,
     isIncreaseRule: false,
@@ -2823,7 +2716,6 @@ function incomeIncreasePlan(
   const base = normalizePositiveNumber(increaseAmount);
 
   return {
-    emergencyFund: roundToTwo(base * DEFAULT_EMERGENCY_FUND_RATE),
     investment: roundToTwo((base * rule.investmentPercent) / 100),
     lifestyleUpgrade: roundToTwo((base * rule.lifestylePercent) / 100),
     personalTreat: roundToTwo((base * rule.treatPercent) / 100),
@@ -3093,7 +2985,13 @@ function consumeMatchingFixedExpense({
   coveredFixedExpenseIndexes,
   uyuPerUsdRate,
 }: {
-  transaction: FinancialMarginTransaction;
+  transaction: {
+    amount: number;
+    currency?: string;
+    money?: Money;
+    category?: string;
+    usdConversion?: UsdConvertedAmount;
+  };
   fixedExpenses: FinancialMarginFixedExpense[];
   coveredFixedExpenseIndexes: Set<number>;
   uyuPerUsdRate?: number;
@@ -3132,14 +3030,6 @@ function normalizePositiveNumber(value: number) {
 
 function roundToTwo(value: number) {
   return Math.round(value * 100) / 100;
-}
-
-function isEmergencyFundCategory(category?: string) {
-  const normalized = normalizeMarginCategory(category);
-
-  return ["colchon", "emergencia", "liquidez", "fondo"].some((keyword) =>
-    normalized.includes(keyword),
-  );
 }
 
 function isEssentialMarginCategory(category?: string) {
@@ -3183,29 +3073,26 @@ function financialMarginState({
   monthlyIncome,
   availableMonthlyMargin,
   savingRate,
-  monthsCovered,
   debtPressurePercent,
 }: {
   monthlyIncome: number;
   availableMonthlyMargin: number;
   savingRate: number;
-  monthsCovered: number;
   debtPressurePercent: number;
 }): FinancialMarginState {
   if (
     monthlyIncome <= 0 ||
     availableMonthlyMargin < 0 ||
-    monthsCovered < 1 ||
     debtPressurePercent >= 35
   ) {
     return "fragil";
   }
 
-  if (savingRate < 10 || monthsCovered < 3 || debtPressurePercent >= 20) {
+  if (savingRate < 10 || debtPressurePercent >= 20) {
     return "ajustado";
   }
 
-  if (savingRate >= 25 && monthsCovered >= 6 && debtPressurePercent < 10) {
+  if (savingRate >= 25 && debtPressurePercent < 10) {
     return "fuerte";
   }
 
@@ -3233,36 +3120,18 @@ function financialMarginAvailableTone({
   return "green";
 }
 
-function marginChangeJobCapacity(monthsCovered: number): ChangeJobCapacity {
-  if (monthsCovered >= 9) {
-    return "alta";
-  }
-
-  if (monthsCovered >= 3) {
-    return "moderada";
-  }
-
-  if (monthsCovered >= 1) {
-    return "limitada";
-  }
-
-  return "baja";
-}
-
 function marginPaycheckDependency({
   monthlyIncome,
   availableMonthlyMargin,
-  monthsCovered,
 }: {
   monthlyIncome: number;
   availableMonthlyMargin: number;
-  monthsCovered: number;
 }) {
-  if (monthlyIncome <= 0 || availableMonthlyMargin < 0 || monthsCovered < 1) {
+  if (monthlyIncome <= 0 || availableMonthlyMargin < 0) {
     return "alta";
   }
 
-  if (availableMonthlyMargin / monthlyIncome < 0.15 || monthsCovered < 3) {
+  if (availableMonthlyMargin / monthlyIncome < 0.15) {
     return "media";
   }
 
@@ -3274,17 +3143,13 @@ function financialMarginSignals({
   estimatedMonthlyIncome,
   marginIncomeSource,
   availableMonthlyMargin,
-  monthsCovered,
   debtPressurePercent,
-  emergencyFund,
 }: {
   monthlyIncome: number;
   estimatedMonthlyIncome: number;
   marginIncomeSource: FinancialMarginAnalysis["marginIncomeSource"];
   availableMonthlyMargin: number;
-  monthsCovered: number;
   debtPressurePercent: number;
-  emergencyFund: number;
 }) {
   const signals: string[] = [];
 
@@ -3302,18 +3167,12 @@ function financialMarginSignals({
     signals.push("El mes queda por debajo de cero antes de invertir.");
   }
 
-  if (emergencyFund <= 0) {
-    signals.push("No hay colchon confirmado.");
-  } else if (monthsCovered < 3) {
-    signals.push("El colchon todavia cubre menos de 3 meses.");
-  }
-
   if (debtPressurePercent >= 20) {
     signals.push("La deuda consume una parte importante del ingreso confirmado.");
   }
 
   if (signals.length === 0) {
-    signals.push("Margen mensual positivo con colchon operativo.");
+    signals.push("Margen mensual positivo y deuda bajo control.");
   }
 
   return signals;
@@ -3325,11 +3184,11 @@ function financialMarginRecommendation(state: FinancialMarginState) {
   }
 
   if (state === "ajustado") {
-    return "Separar primero colchon y revisar gastos fijos esta semana.";
+    return "Revisar gastos fijos y deuda antes de asumir decisiones nuevas.";
   }
 
   if (state === "estable") {
-    return "Mantener margen positivo y acercar el colchon al punto de tranquilidad.";
+    return "Mantener margen positivo y evitar que nuevos gastos fijos absorban la ventaja.";
   }
 
   return "Proteger el margen y evitar que nuevos gastos fijos absorban la ventaja.";
@@ -3446,7 +3305,7 @@ function lifestyleRecommendation(
   }
 
   if (risk === "medio") {
-    return "Aplicar 70/20/10 al próximo aumento y enviar primero el 5% al colchón.";
+    return "Aplicar 70/20/10 al próximo aumento y capturar la parte de inversion antes de subir gastos.";
   }
 
   return "Mantener gastos nuevos congelados y capturar el aumento para inversión o libertad.";

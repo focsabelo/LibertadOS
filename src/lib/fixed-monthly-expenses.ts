@@ -1,3 +1,5 @@
+import { createMoney, type Money } from "./money";
+
 type JsonRecord = Record<string, unknown>;
 
 export const FIXED_MONTHLY_EXPENSE_CATEGORIES = [
@@ -46,6 +48,11 @@ export type FixedMonthlyExpenseDraft = Omit<
 export type FixedMonthlyExpenseTotal = {
   currency: FixedMonthlyExpenseCurrency;
   amount: number;
+  money: Money;
+};
+
+export type FixedMonthlyExpenseSummaryOptions = {
+  uyuPerUsdRate?: number;
 };
 
 const categoryKeywords: Record<FixedMonthlyExpenseCategory, string[]> = {
@@ -170,6 +177,7 @@ export function fixedMonthlyExpenseFromRow(row: JsonRecord): FixedMonthlyExpense
 
 export function summarizeActiveFixedExpenses(
   expenses: Pick<FixedMonthlyExpenseDraft, "active" | "monthlyAmount" | "currency">[],
+  options: FixedMonthlyExpenseSummaryOptions = {},
 ): FixedMonthlyExpenseTotal[] {
   const totals = new Map<string, number>();
 
@@ -183,10 +191,22 @@ export function summarizeActiveFixedExpenses(
     totals.set(currency, current + normalizeAmount(expense.monthlyAmount));
   }
 
-  return Array.from(totals.entries()).map(([currency, amount]) => ({
-    currency,
-    amount,
-  }));
+  return Array.from(totals.entries()).map(([currency, amount]) => {
+    const normalizedCurrency = normalizeCurrency(currency);
+
+    return {
+      currency: normalizedCurrency,
+      amount,
+      money: createMoney({
+        amount,
+        currency: normalizedCurrency,
+        fallbackRates:
+          normalizedCurrency === "UYU" && options.uyuPerUsdRate
+            ? { UYU: options.uyuPerUsdRate }
+            : {},
+      }),
+    };
+  });
 }
 
 export function fixedMonthlyExpenseUsdEquivalent(
@@ -200,8 +220,11 @@ export function fixedMonthlyExpenseUsdEquivalent(
     const amount = normalizeAmount(total.amount);
     const currency = normalizeCurrency(total.currency);
 
-    if (currency === "USD") {
-      equivalent += amount;
+    if (total.money.conversionStatus !== "missing") {
+      equivalent += total.money.usdAmount;
+      if (currency !== "USD") {
+        hasConvertedAmount = true;
+      }
       continue;
     }
 

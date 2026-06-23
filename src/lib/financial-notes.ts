@@ -19,6 +19,7 @@ export type FinancialType =
   | "decision";
 
 export type TransactionIntent = "real" | "intencion" | "pensado" | "negado";
+export type ParserConfidence = "alta" | "media" | "baja";
 export type AntiErrorRiskLevel = "bajo" | "medio" | "alto";
 export type AntiErrorAction =
   | "esperar"
@@ -80,6 +81,7 @@ export type DetectedFinancialItem = {
   impulse: boolean;
   coreExpense: boolean;
   intent: TransactionIntent;
+  confidence: ParserConfidence;
   money: Money;
   freedomImpact: number;
   sourceText: string;
@@ -358,6 +360,13 @@ export function recalculateDetectedFinancialItem(
     ...item,
     impulse,
     debt,
+    confidence: detectParserConfidence({
+      amount: item.amount,
+      category: item.category,
+      debt,
+      intent: item.intent,
+      type: item.type,
+    }),
     money,
     freedomImpact,
     usdConversion,
@@ -418,10 +427,6 @@ function buildItem({
     type = "inversion";
   }
 
-  if (category === "colchon") {
-    type = "ahorro";
-  }
-
   if (
     effectiveAmount === 0 &&
     type !== "deuda" &&
@@ -467,6 +472,13 @@ function buildItem({
     currency,
     usdConversion,
   });
+  const confidence = detectParserConfidence({
+    amount: effectiveAmount,
+    category,
+    debt,
+    intent,
+    type,
+  });
 
   return {
     id,
@@ -480,6 +492,7 @@ function buildItem({
     impulse,
     coreExpense,
     intent,
+    confidence,
     freedomImpact,
     sourceText: text || "Captura sin texto",
     incomeIncrease,
@@ -550,7 +563,7 @@ function detectType(text: string): FinancialType {
     return "inversion";
   }
 
-  if (hasAny(text, ["ahorr", "colchon", "liquidez", "fondo"])) {
+  if (hasAny(text, ["ahorr"])) {
     return "ahorro";
   }
 
@@ -673,10 +686,6 @@ function detectCategory(text: string, type: FinancialType, indexHint: number) {
 
   if (hasAny(text, incomeWords)) {
     return "salario";
-  }
-
-  if (hasAny(text, ["colchon", "liquidez", "emergencia"])) {
-    return "colchon";
   }
 
   if (type === "ingreso") {
@@ -1038,6 +1047,36 @@ function debtSignals({
   }
 
   return signals;
+}
+
+function detectParserConfidence({
+  amount,
+  category,
+  debt,
+  intent,
+  type,
+}: {
+  amount: number;
+  category: string;
+  debt?: DebtAnalysis;
+  intent: TransactionIntent;
+  type: FinancialType;
+}): ParserConfidence {
+  if (amount <= 0 || debt?.certainty === "insuficiente") {
+    return "baja";
+  }
+
+  if (
+    intent !== "real" ||
+    debt?.certainty === "parcial" ||
+    category === "sin categoria" ||
+    category === "varios" ||
+    type === "decision"
+  ) {
+    return "media";
+  }
+
+  return "alta";
 }
 
 function shouldTreatAmountAsDebtPrincipal(

@@ -50,7 +50,6 @@ Campos existentes a preservar:
 
 - `monthlyContributionTarget`;
 - `salaryInvestmentPercent`;
-- `emergencyFundMonths`;
 - `rebalanceTolerancePercent`;
 - `rebalanceFrequency`;
 - `drawdownRule`;
@@ -96,7 +95,6 @@ Debe leer:
 
 - cartera objetivo y cartera actual;
 - desbalances por activo;
-- fondo de emergencia disponible si existe via margen;
 - decision simulada opcional de Modo Decision;
 - senales emocionales opcionales.
 
@@ -104,7 +102,6 @@ Reglas iniciales:
 
 - aporte mensual objetivo cargado;
 - porcentaje de salario a invertir cargado;
-- colchon objetivo cargado;
 - tolerancia de rebalanceo definida;
 - frecuencia de rebalanceo definida;
 - BTC dentro del objetivo o marcado como alerta;
@@ -189,7 +186,7 @@ No hace falta implementar temporizador real de 48 horas para cambios de politica
 Si la politica esta incompleta:
 
 - mostrar reglas faltantes;
-- sugerir completar primero colchon, aporte, tolerancia y regla de no tocar el plan;
+- sugerir completar primero aporte, tolerancia y regla de no tocar el plan;
 - no inventar cumplimiento.
 
 Si no hay cartera o transacciones:

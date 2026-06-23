@@ -249,7 +249,6 @@ Checklist semanal:
 * revisar ingresos confirmados;
 * revisar gastos confirmados;
 * revisar tasa de ahorro;
-* confirmar si se separó el 5% para colchón;
 * confirmar inversión/aporte del mes;
 * detectar compras emocionales;
 * detectar comparación, FOMO o impulso;
@@ -276,7 +275,6 @@ Estado:
 
 Ejemplos de acciones:
 
-* "Separar US$25 al colchón."
 * "Revisar gasto de transporte."
 * "Esperar 48 horas antes de confirmar esta compra."
 * "Aplicar regla 70/20/10 al aumento detectado."
@@ -367,7 +365,6 @@ Incluir:
 
 * aporte mensual objetivo;
 * porcentaje de salario a invertir;
-* fondo de emergencia objetivo;
 * cartera objetivo;
 * tolerancia a desbalance;
 * frecuencia de rebalanceo;
@@ -421,7 +418,6 @@ La libertad financiera no es solo patrimonio total. También es margen, tranquil
 
 Medir:
 
-* meses de colchón;
 * gastos fijos mensuales;
 * gastos variables;
 * deuda mensual;
@@ -435,7 +431,6 @@ Medir:
 Mostrar:
 
 * margen mensual disponible;
-* meses cubiertos por el colchón;
 * presión de deuda sobre ingreso;
 * gastos esenciales vs no esenciales;
 * estado general: frágil, ajustado, estable o fuerte.
@@ -443,7 +438,6 @@ Mostrar:
 Ejemplos de copy:
 
 * "Tu margen actual es ajustado: dependés demasiado del siguiente sueldo."
-* "Tu colchón cubre 2,4 meses de gastos."
 * "Tu deuda consume el 18% de tus ingresos confirmados."
 
 Reglas:
@@ -458,11 +452,9 @@ Estado:
 * modelo `FinancialMarginAnalysis` agregado;
 * analizador de margen mensual usando solo transacciones confirmadas;
 * gastos fijos activos conectados como supuestos separados;
-* colchon confirmado convertido en meses cubiertos;
 * deuda mensual confirmada expresada como presion sobre ingreso;
 * gastos esenciales y no esenciales separados;
 * estado general visible: fragil, ajustado, estable o fuerte;
-* punto de tranquilidad calculado como seis meses de gasto mensual actual;
 * pantalla dedicada de Margen agregada a la navegacion;
 * resumen de margen agregado al dashboard operativo;
 * tests de margen financiero agregados.
@@ -519,7 +511,7 @@ Estado:
 * analizador `analyzeIncomeIncrease` agregado sobre transacciones confirmadas;
 * regla 70/20/10 editable en estado local, sin persistencia nueva;
 * pantalla dedicada Aumentos agregada a la navegacion avanzada;
-* aumento detectado, gasto absorbido, margen capturado, colchon e impacto FIRE se muestran como simulacion;
+* aumento detectado, gasto absorbido, margen capturado e impacto FIRE se muestran como simulacion;
 * las sugerencias no crean movimientos reales ni modifican patrimonio, cartera, deuda o roadmap;
 * tests de normalizacion, aumento confirmado y ausencia de aumento agregados.
 

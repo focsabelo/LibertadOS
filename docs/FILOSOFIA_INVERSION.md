@@ -111,7 +111,7 @@ La app debe detectar estas senales, mostrarlas de forma editable y sugerir fricc
 - Confundir ingresos altos con riqueza.
 - Endeudarse para aparentar progreso.
 - Comprar pasivos creyendo que son activos.
-- No tener fondo de emergencia.
+- No tener capital operativo disponible en el broker del bot para evitar ventas forzadas.
 - Invertir en cosas que no se entienden.
 - Vivir comparandose.
 - No invertir en habilidades que aumentan ingresos.

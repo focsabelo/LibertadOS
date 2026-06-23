@@ -164,12 +164,6 @@ function PolicyEditor({
       step: "1",
     },
     {
-      key: "emergencyFundMonths",
-      label: "Colchon objetivo",
-      suffix: "meses",
-      step: "1",
-    },
-    {
       key: "rebalanceTolerancePercent",
       label: "Tolerancia desbalance",
       suffix: "pp",

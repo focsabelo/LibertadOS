@@ -48,7 +48,9 @@ export function FixedMonthlyExpensesPanel({
   const parsedDraft = draftText.trim()
     ? createFixedMonthlyExpenseDraft(draftText)
     : null;
-  const activeTotals = summarizeActiveFixedExpenses(expenses);
+  const activeTotals = summarizeActiveFixedExpenses(expenses, {
+    uyuPerUsdRate,
+  });
   const totalLabel =
     activeTotals.length > 0
       ? activeTotals

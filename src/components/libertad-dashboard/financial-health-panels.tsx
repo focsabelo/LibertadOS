@@ -3,7 +3,7 @@ import {
   analyzeFinancialMargin,
   analyzeLifestyleInflation,
 } from "@/lib/finance";
-import { currencyFormatter, numberFormatter, percentFormatter } from "./formatting";
+import { currencyFormatter, percentFormatter } from "./formatting";
 import { FireRow, MetricCard } from "./shared-components";
 
 export function FinancialMarginPanel({
@@ -16,10 +16,6 @@ export function FinancialMarginPanel({
   onOpenSettings: () => void;
 }) {
   const state = financialMarginStateCopy(analysis.state);
-  const calmProgress =
-    analysis.calmPointAmount > 0
-      ? Math.min(100, (analysis.emergencyFund / analysis.calmPointAmount) * 100)
-      : 0;
 
   return (
     <section className="libertad-surface rounded-lg p-5 sm:p-6">
@@ -30,7 +26,7 @@ export function FinancialMarginPanel({
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
             Mide libertad mensual operativa: ingreso confirmado o base cargada
-            en Config, gastos activos, deuda mensual y colchon.
+            en Config, gastos activos, deuda mensual y margen disponible.
           </p>
         </div>
         <div
@@ -60,11 +56,6 @@ export function FinancialMarginPanel({
           />
         ) : null}
         <MetricCard
-          label="Meses de colchon"
-          value={`${numberFormatter.format(analysis.monthsCovered)} meses`}
-          tone={analysis.monthsCovered >= 3 ? "green" : "amber"}
-        />
-        <MetricCard
           label="Presion de deuda"
           value={`${percentFormatter.format(analysis.debtPressurePercent)}%`}
           tone={analysis.debtPressurePercent >= 20 ? "red" : "neutral"}
@@ -79,31 +70,14 @@ export function FinancialMarginPanel({
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.45fr)]">
         <div className="libertad-soft-panel rounded-md p-4">
           <div className="flex items-center justify-between gap-4 text-sm font-medium">
-            <span className="text-stone-700">Punto de tranquilidad</span>
+            <span className="text-stone-700">Margen operativo</span>
             <span className="libertad-number text-base font-semibold text-stone-950">
-              {currencyFormatter.format(analysis.emergencyFund)} /{" "}
-              {currencyFormatter.format(analysis.calmPointAmount)}
+              {currencyFormatter.format(analysis.availableMonthlyMargin)}
             </span>
           </div>
-          <div
-            aria-label={`Colchon cubierto ${percentFormatter.format(calmProgress)}%`}
-            aria-valuemax={100}
-            aria-valuemin={0}
-            aria-valuenow={calmProgress}
-            className="libertad-meter mt-4 h-4"
-            role="progressbar"
-          >
-            <div
-              className="h-full rounded-full bg-emerald-700"
-              style={{ width: `${calmProgress}%` }}
-            />
-          </div>
           <p className="mt-3 text-sm leading-6 text-stone-700">
-            Faltan{" "}
-            <span className="libertad-number font-semibold text-stone-950">
-              {currencyFormatter.format(analysis.calmPointDistance)}
-            </span>{" "}
-            para cubrir seis meses del gasto mensual actual.
+            Lectura del dinero que queda despues de gastos fijos, variables y
+            deuda confirmada del mes.
           </p>
         </div>
 
@@ -196,13 +170,6 @@ export function FinancialMarginPanel({
                 )}
                 detail="Cuanto pesa el siguiente ingreso para sostener el mes."
               />
-              <FireRow
-                label="Cambiar de trabajo"
-                value={financialMarginCapacityLabel(
-                  analysis.changeJobCapacity,
-                )}
-                detail="Lectura por meses cubiertos, no recomendacion laboral."
-              />
             </div>
           </div>
 
@@ -266,7 +233,7 @@ function financialMarginStateCopy(state: ReturnType<typeof analyzeFinancialMargi
       label: "fuerte",
       classes: "border-emerald-300 bg-emerald-100 text-emerald-950",
       metricTone: "green",
-      body: "Tu margen y colchon dan buena libertad mensual; el riesgo principal es agregar gastos fijos nuevos.",
+      body: "Tu margen da buena libertad mensual; el riesgo principal es agregar gastos fijos nuevos.",
     },
   } as const;
 
@@ -295,19 +262,6 @@ function financialMarginDependencyLabel(
   };
 
   return labels[dependency];
-}
-
-function financialMarginCapacityLabel(
-  capacity: ReturnType<typeof analyzeFinancialMargin>["changeJobCapacity"],
-) {
-  const labels = {
-    baja: "Baja",
-    limitada: "Limitada",
-    moderada: "Moderada",
-    alta: "Alta",
-  };
-
-  return labels[capacity];
 }
 
 export function DebtLoadPanel({
@@ -345,7 +299,7 @@ export function DebtLoadPanel({
       {analysis.count === 0 ? (
         <div className="mt-5 rounded-md border border-dashed border-stone-300 bg-stone-50 p-4 text-sm leading-6 text-stone-700">
           Cuando confirmes una deuda real, aca vas a ver cuota mensual, costo
-          anual e impacto sobre el numero FIRE.
+          anual e impacto sobre tu numero de libertad.
         </div>
       ) : (
         <>
@@ -365,7 +319,7 @@ export function DebtLoadPanel({
               tone="red"
             />
             <MetricCard
-              label="Impacto FIRE"
+              label="Impacto en numero de libertad"
               value={currencyFormatter.format(analysis.fireImpact)}
               tone="green"
             />
@@ -631,7 +585,11 @@ export function LifestyleInflationPanel({
 
             <div className="libertad-soft-panel rounded-md p-4">
               <p className="text-sm font-semibold text-stone-800">
-                Conexiones FIRE
+                Conexiones con libertad financiera
+              </p>
+              <p className="mt-1 text-sm leading-6 text-stone-600">
+                Muestra como aumentos y gastos criticos acercan o alejan la
+                meta de libertad financiera.
               </p>
               <div className="mt-3 grid gap-2">
                 {increaseRule ? (

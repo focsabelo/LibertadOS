@@ -12,7 +12,6 @@ Incluye:
 
 * aumento de ingreso confirmado contra el mes anterior;
 * regla editable de distribucion 70/20/10;
-* sugerencia de colchon usando el 5% existente;
 * aumento absorbido por gasto confirmado;
 * impacto potencial sobre roadmap si el tramo de inversion se ejecutara;
 * accion principal sobria.

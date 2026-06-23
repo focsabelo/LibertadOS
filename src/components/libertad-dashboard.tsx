@@ -67,13 +67,12 @@ import {
   annualSpend,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
-  completionPercent,
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_FREEDOM_INPUTS,
   DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
-  estimateYearsToTarget,
   freedomNumber,
+  freedomProgressMetrics,
   normalizeBotOpera24hsInvestment,
   normalizeTargetPortfolioSettings,
   type BotOpera24hsInvestment,
@@ -375,9 +374,19 @@ export function LibertadDashboard() {
     function syncSectionFromHash() {
       const hashSection = window.location.hash.slice(1);
       const normalizedSection =
-        hashSection === "semana" ? "revision" : hashSection;
-      if (hashSection === "semana") {
-        window.history.replaceState(null, "", "#revision");
+        hashSection === "semana"
+          ? "revision"
+          : hashSection === "aumentos"
+            ? "politica"
+            : hashSection === "estilo"
+              ? "revision"
+              : hashSection;
+      if (
+        hashSection === "semana" ||
+        hashSection === "aumentos" ||
+        hashSection === "estilo"
+      ) {
+        window.history.replaceState(null, "", `#${normalizedSection}`);
       }
       const matchingSection = modules.find(
         (module) => module.id === normalizedSection,
@@ -482,8 +491,17 @@ export function LibertadDashboard() {
   }, [botOperaInvestment, hasLoaded, supabase, userId]);
 
   const transactionSummary = useMemo(
-    () => confirmedTransactionsSummary(confirmedTransactions),
-    [confirmedTransactions],
+    () =>
+      confirmedTransactionsSummary(confirmedTransactions, {
+        fixedMonthlyExpenses,
+        uyuPerUsdRate: hasUyuFixedExpense ? uyuPerUsdRate : undefined,
+      }),
+    [
+      confirmedTransactions,
+      fixedMonthlyExpenses,
+      hasUyuFixedExpense,
+      uyuPerUsdRate,
+    ],
   );
   const lifestyleInflation = useMemo(
     () => analyzeLifestyleInflation(confirmedTransactions),
@@ -563,25 +581,20 @@ export function LibertadDashboard() {
   const metrics = useMemo(() => {
     const target = freedomNumber(effectiveInputs.desiredMonthlySpend);
     const annual = annualSpend(effectiveInputs.desiredMonthlySpend);
-    const completed = completionPercent(effectiveInputs.netWorth, target);
-    const years = estimateYearsToTarget({
-      currentAmount: effectiveInputs.netWorth,
+    const freedomProgress = freedomProgressMetrics({
+      investedCapital: effectiveInputs.investedCapital,
       targetAmount: target,
       monthlyContribution: effectiveInputs.monthlyContribution,
       annualReturnPercent: effectiveInputs.expectedAnnualReturn,
     });
-    const investRatio =
-      effectiveInputs.netWorth > 0
-        ? (effectiveInputs.investedCapital / effectiveInputs.netWorth) * 100
-        : 0;
 
     return {
       annual,
       target,
-      completed,
-      years,
-      investRatio,
-      remaining: Math.max(0, target - effectiveInputs.netWorth),
+      completed: freedomProgress.completed,
+      years: freedomProgress.years,
+      currentFreedomCapital: freedomProgress.currentAmount,
+      remaining: freedomProgress.remaining,
     };
   }, [effectiveInputs]);
 
@@ -610,9 +623,7 @@ export function LibertadDashboard() {
     (key) => inputs[key] > 0,
   );
   const hasFreedomTarget = effectiveInputs.desiredMonthlySpend > 0;
-  const hasProgressBasis =
-    effectiveInputs.netWorth > 0 || effectiveInputs.investedCapital > 0;
-  const hasProgressCalculation = hasFreedomTarget && hasProgressBasis;
+  const hasProgressCalculation = hasFreedomTarget;
   const isGuidedEmptyState =
     !hasBaseFinancialInputs && confirmedTransactions.length === 0;
 
@@ -675,7 +686,6 @@ export function LibertadDashboard() {
     const numericFields: (keyof InvestmentPolicySettings)[] = [
       "monthlyContributionTarget",
       "salaryInvestmentPercent",
-      "emergencyFundMonths",
       "rebalanceTolerancePercent",
     ];
     const nextValue = numericFields.includes(key)
@@ -992,11 +1002,11 @@ export function LibertadDashboard() {
   const weeklyAction = needsDebtAttention
     ? "Abrir deuda y revisar la presion mensual."
     : needsMarginAttention
-      ? "Abrir margen y acercar el colchon al punto de tranquilidad."
+      ? "Abrir margen y revisar gastos fijos o deuda."
       : needsIncomeIncreaseAttention
-        ? "Abrir aumentos y separar el dinero nuevo antes de subir gastos."
+        ? "Abrir politica y separar el dinero nuevo antes de subir gastos."
         : needsLifestyleAttention
-          ? "Abrir estilo y revisar inflacion de vida."
+          ? "Abrir revision y revisar inflacion de vida."
           : needsMonthlyReviewAttention
             ? monthlyReview.primaryAction
             : needsPortfolioAttention
@@ -1007,9 +1017,9 @@ export function LibertadDashboard() {
     : needsMarginAttention
       ? "margen"
       : needsIncomeIncreaseAttention
-        ? "aumentos"
+        ? "politica"
         : needsLifestyleAttention
-          ? "estilo"
+          ? "revision"
           : needsMonthlyReviewAttention
             ? "revision"
             : needsPortfolioAttention
@@ -1071,8 +1081,8 @@ export function LibertadDashboard() {
                 Sistema personal de libertad financiera
               </h1>
               <p className="mt-1.5 max-w-[32ch] break-words text-sm leading-6 text-stone-300 sm:max-w-2xl">
-                Medí tu número x25, capturá decisiones y confirmá notas antes
-                de impactar datos.
+                Medi tu numero de libertad financiera, captura decisiones y
+                confirma notas antes de impactar datos.
               </p>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <SyncStatusPill
@@ -1204,6 +1214,10 @@ export function LibertadDashboard() {
                           ? currencyFormatter.format(metrics.target)
                           : "Sin gasto mensual"}
                       </p>
+                      <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
+                        Capital invertido objetivo para sostener tu gasto
+                        mensual: gasto mensual deseado x 12 x 25.
+                      </p>
                     </div>
                     <div className="shrink-0 rounded-md border border-stone-200 bg-stone-950 px-4 py-3 text-left text-white">
                       <p className="text-sm font-medium text-stone-300">
@@ -1277,13 +1291,12 @@ export function LibertadDashboard() {
                       tone="blue"
                     />
                     <MetricCard
-                      label="Patrimonio invertido"
-                      value={
-                        hasProgressBasis
-                          ? `${percentFormatter.format(metrics.investRatio)}%`
-                          : "Sin cargar"
-                      }
-                      tone="green"
+                      label="Capital hacia libertad"
+                      value={currencyFormatter.format(
+                        metrics.currentFreedomCapital,
+                      )}
+                      detail="Base usada para progreso, distinta del patrimonio total."
+                      tone="blue"
                     />
                   </div>
                 </div>
@@ -1361,11 +1374,9 @@ export function LibertadDashboard() {
                   />
                   <MetricCard
                     label="Capital invertido"
-                    value={
-                      effectiveInputs.investedCapital > 0
-                        ? currencyFormatter.format(effectiveInputs.investedCapital)
-                        : "Sin cargar"
-                      }
+                    value={currencyFormatter.format(
+                      effectiveInputs.investedCapital,
+                    )}
                       tone="blue"
                     />
                   <MetricCard
@@ -1414,12 +1425,20 @@ export function LibertadDashboard() {
           ) : null}
 
           {activeSection === "politica" ? (
-            <InvestmentPolicyPanel
-              portfolio={targetPortfolio}
-              policy={targetPortfolio.policy}
-              onMarkReviewed={markInvestmentPolicyReviewed}
-              onPolicyChange={updateInvestmentPolicy}
-            />
+            <section className="grid gap-5">
+              <InvestmentPolicyPanel
+                portfolio={targetPortfolio}
+                policy={targetPortfolio.policy}
+                onMarkReviewed={markInvestmentPolicyReviewed}
+                onPolicyChange={updateInvestmentPolicy}
+              />
+              <IncomeIncreasePanel
+                analysis={incomeIncreaseAnalysis}
+                settings={incomeIncreaseRule}
+                onOpenNotes={() => selectSection("notas")}
+                onSettingsChange={updateIncomeIncreaseRule}
+              />
+            </section>
           ) : null}
 
           {activeSection === "deuda" ? (
@@ -1428,19 +1447,6 @@ export function LibertadDashboard() {
 
           {activeSection === "palancas" ? (
             <FireLeversPanel summary={transactionSummary} />
-          ) : null}
-
-          {activeSection === "estilo" ? (
-            <LifestyleInflationPanel analysis={lifestyleInflation} />
-          ) : null}
-
-          {activeSection === "aumentos" ? (
-            <IncomeIncreasePanel
-              analysis={incomeIncreaseAnalysis}
-              settings={incomeIncreaseRule}
-              onOpenNotes={() => selectSection("notas")}
-              onSettingsChange={updateIncomeIncreaseRule}
-            />
           ) : null}
 
           {activeSection === "revision" ? (
@@ -1475,6 +1481,7 @@ export function LibertadDashboard() {
                 analysis={monthlyReview}
                 onOpenNotes={() => selectSection("notas")}
               />
+              <LifestyleInflationPanel analysis={lifestyleInflation} />
             </section>
           ) : null}
 

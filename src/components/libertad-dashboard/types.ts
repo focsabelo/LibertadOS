@@ -66,14 +66,12 @@ export type AppSection =
   | "notas"
   | "decisiones"
   | "politica"
-  | "aumentos"
   | "revision"
   | "margen"
   | "cartera"
   | "deuda"
   | "roadmap"
   | "palancas"
-  | "estilo"
   | "configuracion";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -92,6 +90,11 @@ export const primaryModules: {
     id: "notas",
     label: "Notas",
     description: "Captura y revision",
+  },
+  {
+    id: "revision",
+    label: "Revision",
+    description: "Cierre mensual",
   },
   {
     id: "margen",
@@ -121,16 +124,6 @@ export const secondaryModules: {
     description: "Reglas del plan",
   },
   {
-    id: "aumentos",
-    label: "Aumentos",
-    description: "Ingresos extra",
-  },
-  {
-    id: "revision",
-    label: "Revision",
-    description: "Cierre mensual",
-  },
-  {
     id: "cartera",
     label: "Cartera",
     description: "Asignacion objetivo",
@@ -143,12 +136,7 @@ export const secondaryModules: {
   {
     id: "palancas",
     label: "Palancas",
-    description: "Impacto FIRE",
-  },
-  {
-    id: "estilo",
-    label: "Estilo",
-    description: "Inflacion de vida",
+    description: "Numero libertad",
   },
   {
     id: "roadmap",
