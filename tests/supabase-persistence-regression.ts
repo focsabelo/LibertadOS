@@ -47,6 +47,16 @@ const payload = createDashboardSettingsPayload({
   userId,
   data: {
     inputs,
+    wealthAssets: [
+      {
+        id: "asset-home",
+        name: "Casa",
+        category: "vivienda",
+        estimatedValue: 100000,
+        debtBalance: 20000,
+        countsAsInvestmentCapital: false,
+      },
+    ],
     roadmapSimulatedContribution: 999,
     onboardingSeen: true,
   },
@@ -54,6 +64,11 @@ const payload = createDashboardSettingsPayload({
 
 assertEqual(payload.user_id, userId, "dashboard payload carries user_id");
 assertEqual(payload.inputs.netWorth, 123, "dashboard payload carries inputs");
+assertEqual(
+  payload.inputs.wealthAssets[0]?.estimatedValue,
+  100000,
+  "dashboard payload carries wealth assets",
+);
 assertEqual(
   payload.inputs.estimatedMonthlyIncome,
   3000,
@@ -78,7 +93,23 @@ assertEqual(
   DEFAULT_BOT_OPERA24HS_INVESTMENT.botNumber,
   "default bot settings are preserved",
 );
+assertEqual(
+  defaults.botOperaInvestment.initialCapital,
+  0,
+  "default bot initial capital starts empty",
+);
+assertEqual(
+  defaults.botOperaInvestment.monthlyContribution,
+  0,
+  "default bot monthly contribution starts empty",
+);
+assertEqual(
+  defaults.botOperaInvestment.monthlyResults.length,
+  0,
+  "default bot monthly results start empty",
+);
 assertEqual(defaults.inputs.netWorth, 0, "default net worth starts empty");
+assertEqual(defaults.wealthAssets.length, 0, "default wealth assets start empty");
 assertEqual(
   defaults.inputs.investedCapital,
   0,
@@ -105,6 +136,16 @@ const normalized = normalizeDashboardData({
     inputs: {
       netWorth: 10,
       estimatedMonthlyIncome: 2400,
+      wealthAssets: [
+        {
+          id: "asset-car",
+          name: "Auto",
+          category: "vehiculo",
+          estimatedValue: 20000,
+          debtBalance: 5000,
+          countsAsInvestmentCapital: false,
+        },
+      ],
     },
   },
   portfolio: {
@@ -118,6 +159,11 @@ const normalized = normalizeDashboardData({
 });
 
 assertEqual(normalized.inputs.netWorth, 10, "partial settings override defaults");
+assertEqual(
+  normalized.wealthAssets[0]?.debtBalance,
+  5000,
+  "partial settings normalize wealth assets",
+);
 assertEqual(
   normalized.inputs.estimatedMonthlyIncome,
   2400,
@@ -141,6 +187,31 @@ assertEqual(
 assert(
   normalized.roadmapSimulatedContribution === 0,
   "missing roadmap simulation starts empty",
+);
+
+const normalizedLegacyNetWorth = normalizeDashboardData({
+  settings: {
+    inputs: {
+      netWorth: 1991,
+      investedCapital: 0,
+    },
+  },
+});
+
+assertEqual(
+  normalizedLegacyNetWorth.inputs.netWorth,
+  0,
+  "legacy manual net worth is removed from hidden inputs",
+);
+assertEqual(
+  normalizedLegacyNetWorth.wealthAssets[0]?.name,
+  "Patrimonio manual heredado",
+  "legacy manual net worth becomes a visible wealth asset",
+);
+assertEqual(
+  normalizedLegacyNetWorth.wealthAssets[0]?.estimatedValue,
+  1991,
+  "legacy manual net worth keeps its amount as a visible asset",
 );
 
 const missingTableError = normalizeSupabasePersistenceError({

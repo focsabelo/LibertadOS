@@ -5,15 +5,18 @@ import {
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   normalizeBotOpera24hsInvestment,
   normalizeTargetPortfolioSettings,
+  normalizeWealthAssets,
   type BotOpera24hsInvestment,
   type FreedomInputs,
   type InvestmentPolicySettings,
   type TargetPortfolioSettings,
+  type WealthAsset,
   type WeeklyExecutionItemId,
   type WeeklyExecutionReview,
 } from "./finance";
 import {
   analyzeFinancialNote,
+  financialNoteAnalysisDate,
   type ConfirmedFinancialTransaction,
   type FinancialNote,
 } from "./financial-notes";
@@ -26,9 +29,13 @@ import {
 } from "./fixed-monthly-expenses";
 
 type JsonRecord = Record<string, unknown>;
+type DashboardSettingsInputs = Partial<FreedomInputs> & {
+  wealthAssets?: unknown;
+};
 
 export type DashboardData = {
   inputs: FreedomInputs;
+  wealthAssets: WealthAsset[];
   portfolioSettings: TargetPortfolioSettings;
   botOperaInvestment: BotOpera24hsInvestment;
   weeklyExecutionReviews: WeeklyExecutionReview[];
@@ -43,7 +50,7 @@ export type NotesData = {
 
 export type DashboardSettingsPayload = {
   user_id: string;
-  inputs: FreedomInputs;
+  inputs: FreedomInputs & { wealthAssets: WealthAsset[] };
   roadmap_simulated_contribution: number;
   onboarding_seen: boolean;
 };
@@ -51,6 +58,7 @@ export type DashboardSettingsPayload = {
 export function createDefaultDashboardData(): DashboardData {
   return {
     inputs: DEFAULT_FREEDOM_INPUTS,
+    wealthAssets: [],
     portfolioSettings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
     botOperaInvestment: DEFAULT_BOT_OPERA24HS_INVESTMENT,
     weeklyExecutionReviews: [],
@@ -66,12 +74,15 @@ export function createDashboardSettingsPayload({
   userId: string;
   data: Pick<
     DashboardData,
-    "inputs" | "roadmapSimulatedContribution" | "onboardingSeen"
+    "inputs" | "wealthAssets" | "roadmapSimulatedContribution" | "onboardingSeen"
   >;
 }): DashboardSettingsPayload {
   return {
     user_id: userId,
-    inputs: data.inputs,
+    inputs: {
+      ...data.inputs,
+      wealthAssets: data.wealthAssets,
+    },
     roadmap_simulated_contribution: data.roadmapSimulatedContribution,
     onboarding_seen: data.onboardingSeen,
   };
@@ -79,7 +90,7 @@ export function createDashboardSettingsPayload({
 
 export function normalizeDashboardData(rows: {
   settings?: Partial<{
-    inputs: Partial<FreedomInputs>;
+    inputs: DashboardSettingsInputs;
     roadmap_simulated_contribution: number;
     onboarding_seen: boolean;
   }> | null;
@@ -103,12 +114,27 @@ export function normalizeDashboardData(rows: {
   const policyFromRule = asRecord(investmentPolicyRule?.data);
   const botRuleData = asRecord(botRule?.data);
   const bot = rows.bot ?? {};
+  const normalizedInputs = normalizeFreedomInputs(
+    rows.settings?.inputs,
+    defaults.inputs,
+  );
+  const normalizedWealthAssets = normalizeWealthAssets(
+    rows.settings?.inputs?.wealthAssets,
+  );
+  const legacyManualWealthAssets =
+    normalizedWealthAssets.length === 0
+      ? legacyManualNetWorthAsset(normalizedInputs)
+      : [];
 
   return {
     inputs: {
-      ...defaults.inputs,
-      ...rows.settings?.inputs,
+      ...normalizedInputs,
+      netWorth: legacyManualWealthAssets.length > 0 ? 0 : normalizedInputs.netWorth,
     },
+    wealthAssets:
+      normalizedWealthAssets.length > 0
+        ? normalizedWealthAssets
+        : legacyManualWealthAssets,
     portfolioSettings: normalizeTargetPortfolioSettings({
       targets: rows.portfolio?.targets as TargetPortfolioSettings["targets"],
       manualAmounts: rows.portfolio
@@ -135,6 +161,61 @@ export function normalizeDashboardData(rows: {
       : defaults.roadmapSimulatedContribution,
     onboardingSeen: Boolean(rows.settings?.onboarding_seen),
   };
+}
+
+function legacyManualNetWorthAsset(inputs: FreedomInputs): WealthAsset[] {
+  const legacyNonInvestmentAmount = Math.max(
+    0,
+    inputs.netWorth - inputs.investedCapital,
+  );
+
+  if (legacyNonInvestmentAmount <= 0) {
+    return [];
+  }
+
+  return [
+    {
+      id: "legacy-manual-net-worth",
+      name: "Patrimonio manual heredado",
+      category: "otro",
+      estimatedValue: legacyNonInvestmentAmount,
+      debtBalance: 0,
+      countsAsInvestmentCapital: false,
+    },
+  ];
+}
+
+function normalizeFreedomInputs(
+  inputs: DashboardSettingsInputs | undefined,
+  defaults: FreedomInputs,
+): FreedomInputs {
+  return {
+    netWorth: normalizeNonNegativeNumber(inputs?.netWorth, defaults.netWorth),
+    investedCapital: normalizeNonNegativeNumber(
+      inputs?.investedCapital,
+      defaults.investedCapital,
+    ),
+    estimatedMonthlyIncome: normalizeNonNegativeNumber(
+      inputs?.estimatedMonthlyIncome,
+      defaults.estimatedMonthlyIncome,
+    ),
+    desiredMonthlySpend: normalizeNonNegativeNumber(
+      inputs?.desiredMonthlySpend,
+      defaults.desiredMonthlySpend,
+    ),
+    monthlyContribution: normalizeNonNegativeNumber(
+      inputs?.monthlyContribution,
+      defaults.monthlyContribution,
+    ),
+    expectedAnnualReturn: normalizeNonNegativeNumber(
+      inputs?.expectedAnnualReturn,
+      defaults.expectedAnnualReturn,
+    ),
+  };
+}
+
+function normalizeNonNegativeNumber(value: unknown, fallback: number) {
+  return Number.isFinite(value) ? Math.max(0, Number(value)) : fallback;
 }
 
 export async function loadDashboardData(
@@ -199,7 +280,7 @@ export async function saveDashboardSettings(
   userId: string,
   data: Pick<
     DashboardData,
-    "inputs" | "roadmapSimulatedContribution" | "onboardingSeen"
+    "inputs" | "wealthAssets" | "roadmapSimulatedContribution" | "onboardingSeen"
   >,
 ) {
   const { error } = await supabase.from("dashboard_settings").upsert(
@@ -339,7 +420,7 @@ export async function loadNotesData(
       ? note
       : {
           ...note,
-          analysis: analyzeFinancialNote(note.body, new Date(), {
+          analysis: analyzeFinancialNote(note.body, financialNoteAnalysisDate(note), {
             defaultCurrency: note.currency,
           }),
         };

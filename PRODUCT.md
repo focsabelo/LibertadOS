@@ -10,7 +10,7 @@ Libertad OS is for one primary user managing personal finances with a long-term 
 
 ## Product Purpose
 
-Libertad OS helps measure financial freedom, understand the impact of spending and investing decisions, and convert messy personal notes into confirmed financial data. Success means the user can capture expenses, income, investments, debts, and decisions quickly, review the detected structure, and only then let confirmed data affect the dashboard.
+Libertad OS helps measure financial freedom, understand the impact of spending and investing decisions, and convert simple financial notes into confirmed records. Success means the user can register expenses, large purchases, and extra income that already happened, review the detected structure, and only then let confirmed data affect the dashboard. Future ideas and possible decisions belong in Decision Mode before execution.
 
 ## Investment Philosophy Source
 

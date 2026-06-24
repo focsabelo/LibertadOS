@@ -70,7 +70,6 @@ export function TargetPortfolioPanel({
   onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
   onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
 }) {
-  const largestImbalance = analysis.largestImbalance;
   const policyAnalysis = analyzeInvestmentPolicy({ portfolio: analysis });
 
   return (
@@ -78,7 +77,7 @@ export function TargetPortfolioPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-stone-950">
-            Cartera objetivo
+            Cartera de inversiones
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
             Objetivo vs actual. Lectura descriptiva de asignacion patrimonial;
@@ -119,17 +118,6 @@ export function TargetPortfolioPanel({
           label="Clases alineadas"
           value={`${analysis.alignedCount}/${analysis.assets.length}`}
           tone="blue"
-        />
-        <MetricCard
-          label="Principal desbalance"
-          value={
-            largestImbalance
-              ? `${largestImbalance.label} ${percentFormatter.format(
-                  Math.abs(largestImbalance.imbalancePercent),
-                )} pp`
-              : "Sin datos"
-          }
-          tone={largestImbalance ? "amber" : "neutral"}
         />
       </div>
 
@@ -250,7 +238,7 @@ function BotOpera24hsPanel({
           </h3>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
             Registro operativo para medir aportes, capital y ganancias. Su
-            total asignado cuenta dentro de la cartera objetivo.
+            total asignado cuenta dentro de la cartera de inversiones.
           </p>
         </div>
         <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700">
@@ -498,14 +486,11 @@ function PortfolioAssetRow({
   onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
   onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
 }) {
-  const imbalanceWidth = Math.min(50, Math.abs(asset.imbalancePercent));
   const status = portfolioStatusCopy(asset.status);
-  const imbalanceSide =
-    asset.imbalancePercent < 0 ? "right-1/2" : "left-1/2";
 
   return (
     <div className="libertad-soft-panel rounded-md p-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_120px_150px_120px] lg:items-end">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_120px_150px] lg:items-end">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-stone-900">
@@ -519,22 +504,6 @@ function PortfolioAssetRow({
             <span className="rounded-full border border-stone-200 bg-white px-2 py-1 text-xs font-medium text-stone-600">
               {portfolioSourceCopy(asset.currentSource)}
             </span>
-          </div>
-          <div
-            aria-label={`${asset.label}: desbalance ${percentFormatter.format(
-              asset.imbalancePercent,
-            )} puntos porcentuales`}
-            className="relative mt-3 h-3 overflow-hidden rounded-full bg-white ring-1 ring-stone-200"
-            role="img"
-          >
-            <span
-              aria-hidden="true"
-              className="absolute left-1/2 top-0 h-full w-px bg-stone-300"
-            />
-            <div
-              className={`absolute top-0 h-full rounded-full ${imbalanceSide} ${status.barClass}`}
-              style={{ width: `${imbalanceWidth}%` }}
-            />
           </div>
           <p className="mt-2 text-xs leading-5 text-stone-600">
             Actual {percentFormatter.format(asset.currentPercent)}% vs objetivo{" "}
@@ -563,7 +532,7 @@ function PortfolioAssetRow({
 
         <label className="grid gap-2">
           <span className="text-xs font-semibold text-stone-600">
-            Snapshot base
+            Valor actual
           </span>
           <input
             autoComplete="off"
@@ -579,16 +548,6 @@ function PortfolioAssetRow({
             }
           />
         </label>
-
-        <div>
-          <p className="text-xs font-semibold text-stone-600">Desbalance</p>
-          <p className="libertad-number mt-2 text-sm font-semibold text-stone-950">
-            {currencyFormatter.format(asset.imbalanceAmount)}
-          </p>
-          <p className="libertad-number text-xs text-stone-500">
-            {percentFormatter.format(asset.imbalancePercent)} pp
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -599,17 +558,14 @@ function portfolioStatusCopy(status: "sobrepeso" | "bajo_peso" | "alineado") {
     sobrepeso: {
       label: "Sobrepeso",
       classes: "border-amber-200 bg-amber-50 text-amber-950",
-      barClass: "bg-amber-600",
     },
     bajo_peso: {
       label: "Bajo peso",
       classes: "border-sky-200 bg-sky-50 text-sky-950",
-      barClass: "bg-sky-600",
     },
     alineado: {
       label: "Alineado",
       classes: "border-emerald-200 bg-emerald-50 text-emerald-950",
-      barClass: "bg-emerald-700",
     },
   };
 
@@ -620,12 +576,12 @@ function portfolioSourceCopy(
   source: ReturnType<typeof analyzeTargetPortfolio>["assets"][number]["currentSource"],
 ) {
   if (source === "snapshot_movimientos") {
-    return "Snapshot + movimientos";
+    return "Manual + movimientos";
   }
 
   if (source === "movimientos") {
-    return "Movimientos";
+    return "Movimientos confirmados";
   }
 
-  return "Snapshot";
+  return "Cargado manualmente";
 }

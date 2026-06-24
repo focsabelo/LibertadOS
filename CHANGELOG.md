@@ -2,7 +2,23 @@
 
 ## Unreleased
 
+* Notas queda enfocada en gastos, compras grandes e ingresos extra ya ocurridos; inversiones, deudas, ahorros y decisiones dejan de aparecer como opciones guardables desde ese flujo.
+* Gastos fijos interpreta `$` como UYU por defecto para reflejar el uso local en Uruguay; `USD`, `US$` y `U$S` siguen siendo dolares.
+* Bot Opera24hs arranca sin capital, aportes ni meses ficticios hasta que el usuario lo configure explicitamente.
+* Regresiones actualizadas para cubrir navegacion principal de Revision, moneda local en gastos fijos y defaults vacios del bot.
 * Revision pasa a la navegacion principal y Avanzado queda ordenado desde Decisiones hacia Politica, Cartera, Deuda, Palancas y Roadmap.
+* El patrimonio actual separa activos patrimoniales, capital de inversiones y movimientos confirmados, sin dejar que una cartera derivada borre el patrimonio no invertido.
+* Patrimonio actual usa ganancia o perdida confirmada del mes, no una resta genérica de deudas confirmadas, para reflejar si ingresos superaron gastos o al reves.
+* Patrimonio actual ya no resta gastos sueltos cuando no hay ingreso confirmado del mes; esos gastos quedan en Revisión/Margen hasta que exista un cierre comparable.
+* Datos base renombra el ingreso mensual como `Sueldo mensual confirmado`; ese sueldo alimenta el cierre mensual y Notas queda para gastos e ingresos extra.
+* El progreso hacia libertad financiera usa capital de inversiones derivado desde la cartera cuando existe, evitando editar capital invertido manualmente.
+* Configuracion elimina el campo editable de patrimonio manual para evitar que datos viejos fijen el patrimonio actual.
+* Configuracion suma una lista editable de activos patrimoniales con valor, deuda asociada y marca de activo productivo para calcular patrimonio y capital de inversiones.
+* El patrimonio manual heredado se migra a un activo visible llamado `Patrimonio manual heredado` cuando no hay activos cargados, evitando valores ocultos como fuente del dashboard.
+* La UI renombra la cartera y sus montos visibles: `Cartera de inversiones`, `Valor actual` y `Capital de inversiones`.
+* Cartera de inversiones oculta el desbalance detallado de la vista principal y mantiene una lectura mas simple de actual vs objetivo.
+* Notas guarda ediciones con debounce y cola para evitar descartar cambios mientras otra escritura sigue en curso.
+* Los borradores cargados conservan la fecha de ultima edicion como referencia para frases relativas como "ayer".
 
 ## v2.3.4 - Estilo Sin Seccion Dedicada
 

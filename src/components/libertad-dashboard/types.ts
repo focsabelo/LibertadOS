@@ -12,22 +12,16 @@ export type Field = {
 
 export const fields: Field[] = [
   {
-    id: "netWorth",
-    label: "Patrimonio actual",
-    prefix: "USD",
-    step: "500",
-  },
-  {
     id: "investedCapital",
-    label: "Capital invertido",
+    label: "Capital de inversiones",
     prefix: "USD",
     step: "500",
   },
   {
     id: "estimatedMonthlyIncome",
-    label: "Ingreso base mensual",
+    label: "Sueldo mensual confirmado",
     description:
-      "Base manual para calcular margen; confirmar un cobro en Notas registra el ingreso real del mes.",
+      "Ingreso fijo del mes. Notas queda para gastos e ingresos extra.",
     prefix: "USD",
     step: "100",
   },
@@ -54,7 +48,6 @@ export const fields: Field[] = [
 ];
 
 export const baseFinancialInputKeys = [
-  "netWorth",
   "investedCapital",
   "estimatedMonthlyIncome",
   "desiredMonthlySpend",

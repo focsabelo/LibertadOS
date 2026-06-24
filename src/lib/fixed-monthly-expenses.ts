@@ -326,7 +326,7 @@ function normalizeCurrency(currency?: string) {
   }
 
   if (normalized === "$") {
-    return "USD";
+    return "UYU";
   }
 
   return normalized || "USD";

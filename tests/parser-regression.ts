@@ -5,6 +5,7 @@ import {
   analyzeWeeklyExecution,
   analyzeLifestyleInflation,
   analyzeIncomeIncrease,
+  analyzeWealthAssets,
   analyzeMonthlyReview,
   analyzeFinancialMargin,
   analyzeConfirmedDebtLoad,
@@ -16,6 +17,7 @@ import {
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
+  monthlyNetResultForEffectiveInputs,
   normalizeIncomeIncreaseRuleSettings,
   normalizeInvestmentPolicySettings,
   freedomNumber,
@@ -35,7 +37,10 @@ import {
 } from "../src/lib/finance";
 import {
   analyzeFinancialNote,
+  EDITABLE_FINANCIAL_TYPES,
+  financialNoteAnalysisDate,
   isConfirmable,
+  NOTE_UI_FOLDERS,
   type DetectedFinancialItem,
   type FinancialType,
   type TransactionIntent,
@@ -97,6 +102,15 @@ const cases: ExpectedCase[] = [
     category: "comida",
     freedomImpact: 8750,
     confidence: "alta",
+  },
+  {
+    text: "Saque USD 700 de mis ahorros para comprar una notebook",
+    type: "gasto",
+    intent: "real",
+    confirmable: true,
+    amount: 700,
+    category: "tecnologia",
+    freedomImpact: 17500,
   },
   {
     text: "Gaste 350 en comida",
@@ -169,8 +183,17 @@ const cases: ExpectedCase[] = [
     text: "Cobre 28000 de sueldo",
     type: "ingreso",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 28000,
+    category: "salario",
+    freedomImpact: 0,
+  },
+  {
+    text: "Cobre 500 de ingreso extra",
+    type: "ingreso",
+    intent: "real",
+    confirmable: true,
+    amount: 500,
     category: "salario",
     freedomImpact: 0,
   },
@@ -188,7 +211,7 @@ const cases: ExpectedCase[] = [
     text: "Inverti 1000 en ETF USA VOO",
     type: "inversion",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 1000,
     category: "etf_usa",
     freedomImpact: 0,
@@ -197,7 +220,7 @@ const cases: ExpectedCase[] = [
     text: "Inverti 700 en ETF Europa",
     type: "inversion",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 700,
     category: "etf_europa",
     freedomImpact: 0,
@@ -206,7 +229,7 @@ const cases: ExpectedCase[] = [
     text: "Inverti 100 en botopera24hs",
     type: "inversion",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 100,
     category: "bot_especulacion",
     freedomImpact: 0,
@@ -215,7 +238,7 @@ const cases: ExpectedCase[] = [
     text: "Inverti 300 en Bitcoin BTC",
     type: "inversion",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 300,
     category: "bitcoin",
     freedomImpact: 0,
@@ -258,7 +281,7 @@ const cases: ExpectedCase[] = [
     text: "Compre un celular de 800 USD con tarjeta",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 800,
     currency: "USD",
     category: "tecnologia",
@@ -281,7 +304,7 @@ const cases: ExpectedCase[] = [
     text: "Compre en 12 cuotas de 200",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 2400,
     freedomImpact: 60000,
     antiErrorEnemies: ["deuda", "financiacion"],
@@ -351,7 +374,7 @@ const cases: ExpectedCase[] = [
     text: "Compre 800 con tarjeta",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 800,
     debt: {
       kind: "gasto_tarjeta",
@@ -364,7 +387,7 @@ const cases: ExpectedCase[] = [
     text: "Compre 800 en 6 cuotas con tarjeta",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 800,
     debt: {
       kind: "compra_cuotas",
@@ -380,7 +403,7 @@ const cases: ExpectedCase[] = [
     text: "Pague solo el minimo de la tarjeta 100",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 100,
     debt: {
       kind: "pago_minimo",
@@ -394,7 +417,7 @@ const cases: ExpectedCase[] = [
     text: "Hipoteca de 800 por mes",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 800,
     freedomImpact: 240000,
     debt: {
@@ -408,7 +431,7 @@ const cases: ExpectedCase[] = [
     text: "Cuota del auto 350",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 350,
     debt: {
       kind: "auto",
@@ -421,7 +444,7 @@ const cases: ExpectedCase[] = [
     text: "Saque un prestamo de 5000 a 24 meses",
     type: "deuda",
     intent: "real",
-    confirmable: true,
+    confirmable: false,
     amount: 5000,
     debt: {
       kind: "prestamo",
@@ -673,6 +696,45 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+assertEqual(
+  EDITABLE_FINANCIAL_TYPES.includes("inversion" as never),
+  false,
+  "Selector manual de tipo oculta inversion",
+  "editableTypes",
+);
+assertEqual(
+  EDITABLE_FINANCIAL_TYPES.includes("ahorro" as never),
+  false,
+  "Selector manual de tipo oculta ahorro",
+  "editableTypes",
+);
+assertEqual(
+  EDITABLE_FINANCIAL_TYPES.includes("deuda" as never),
+  false,
+  "Selector manual de tipo oculta deuda",
+  "editableTypes",
+);
+assertEqual(
+  EDITABLE_FINANCIAL_TYPES.includes("decision" as never),
+  false,
+  "Selector manual de tipo oculta decision",
+  "editableTypes",
+);
+for (const hiddenFolder of [
+  "Inversiones",
+  "Errores financieros",
+  "Resumen mensual",
+  "Numero libertad financiera",
+  "Macro / Liquidez",
+]) {
+  assertEqual(
+    NOTE_UI_FOLDERS.includes(hiddenFolder as never),
+    false,
+    `Sidebar de notas oculta ${hiddenFolder}`,
+    "noteUiFolders",
+  );
+}
+
 for (const testCase of cases) {
   runCase(testCase);
 }
@@ -686,6 +748,22 @@ assertEqual(
   localYesterdayItem.date,
   "2026-05-30",
   "Fecha relativa usa dia local de Montevideo",
+  "date",
+);
+
+const draftReferenceDate = financialNoteAnalysisDate({
+  createdAt: "2026-05-28T12:00:00.000Z",
+  updatedAt: "2026-06-01T02:30:00.000Z",
+});
+const frozenDraftYesterdayItem = analyzeFinancialNote(
+  "Ayer gaste 100 en comida",
+  draftReferenceDate,
+)[0];
+
+assertEqual(
+  frozenDraftYesterdayItem.date,
+  "2026-05-30",
+  "Borradores cargados conservan fecha relativa segun ultima edicion",
   "date",
 );
 
@@ -1138,6 +1216,7 @@ type WeeklyExecutionCase = {
 type MonthlyReviewCase = {
   name: string;
   transactions: MonthlyReviewTransaction[];
+  confirmedMonthlyIncome?: number;
   status: "fuerte" | "correcto" | "debil" | "alerta";
   monthlyIncome: number;
   monthlyExpenses: number;
@@ -1146,6 +1225,7 @@ type MonthlyReviewCase = {
   bigPurchaseCount: number;
   emotionalPurchaseCount: number;
   savingRate: number;
+  savingsAmount?: number;
   primaryAction: string;
 };
 
@@ -1179,9 +1259,13 @@ type EffectiveInputsCase = {
   transactionSummary: {
     netWorthDelta: number;
     investedDelta: number;
+    debtDelta?: number;
+    monthlyNetResult?: number;
     recurringMonthlyExpenses: number;
     expenseDelta: number;
   };
+  investmentCapitalAmount?: number;
+  wealthAssets?: Parameters<typeof analyzeWealthAssets>[0];
   netWorth: number;
   investedCapital: number;
   desiredMonthlySpend: number;
@@ -1191,6 +1275,7 @@ type TransactionSummaryCase = {
   name: string;
   transactions: Parameters<typeof confirmedTransactionsSummary>[0];
   netWorthDelta: number;
+  debtDelta?: number;
   investedDelta?: number;
   confirmedExpenses: number;
   monthlyConfirmedExpenses: number;
@@ -1615,6 +1700,27 @@ for (const testCase of roadmapCases) {
   runWealthRoadmapCase(testCase);
 }
 
+const defaultBotAnalysis = analyzeBotOpera24hs(DEFAULT_BOT_OPERA24HS_INVESTMENT);
+
+assertEqual(
+  defaultBotAnalysis.capitalTotalContributed,
+  0,
+  "Bot especulacion default no crea capital ficticio",
+  "capitalTotalContributed",
+);
+assertEqual(
+  defaultBotAnalysis.currentOperationalCapital,
+  0,
+  "Bot especulacion default no crea capital operativo ficticio",
+  "currentOperationalCapital",
+);
+assertEqual(
+  defaultBotAnalysis.history.length,
+  0,
+  "Bot especulacion default no crea historial ficticio",
+  "history.length",
+);
+
 const botOperaCases: BotOperaCase[] = [
   {
     name: "Aportes quedan pendientes hasta llegar al minimo",
@@ -1945,7 +2051,42 @@ const monthlyReviewCases: MonthlyReviewCase[] = [
     bigPurchaseCount: 0,
     emotionalPurchaseCount: 1,
     savingRate: 12,
+    savingsAmount: 300,
     primaryAction: "Revisar deuda nueva y compras impulsivas antes de planear el mes siguiente.",
+  },
+  {
+    name: "Mes con gastos mayores a ingresos queda como perdida",
+    transactions: [
+      monthlyTx("ingreso", 2000, "2026-06-02"),
+      monthlyTx("gasto", 2300, "2026-06-05", { category: "vivienda" }),
+    ],
+    status: "alerta",
+    monthlyIncome: 2000,
+    monthlyExpenses: 2300,
+    investmentAmount: 0,
+    debtAdded: 0,
+    bigPurchaseCount: 1,
+    emotionalPurchaseCount: 0,
+    savingRate: -15,
+    savingsAmount: -300,
+    primaryAction: "Cerrar datos faltantes y congelar gastos nuevos hasta entender el mes.",
+  },
+  {
+    name: "Sueldo mensual confirmado alimenta cierre sin nota de ingreso",
+    transactions: [
+      monthlyTx("gasto", 9, "2026-06-05", { category: "servicios" }),
+    ],
+    confirmedMonthlyIncome: 2000,
+    status: "correcto",
+    monthlyIncome: 2000,
+    monthlyExpenses: 9,
+    investmentAmount: 0,
+    debtAdded: 0,
+    bigPurchaseCount: 0,
+    emotionalPurchaseCount: 0,
+    savingRate: 99.55,
+    savingsAmount: 1991,
+    primaryAction: "Mantener captura semanal y definir una accion concreta para el mes siguiente.",
   },
   {
     name: "Mes sin datos confirmados queda pendiente de cierre",
@@ -2014,14 +2155,33 @@ assertEqual(
 );
 assert(
   estimatedIncomeMargin.signals.includes(
-    "Margen disponible usa ingreso fijo estimado hasta confirmar el sueldo del mes.",
+    "Margen disponible usa sueldo mensual confirmado desde Config.",
   ),
-  "Ingreso fijo estimado aparece como senal visible en margen disponible",
+  "Sueldo mensual confirmado aparece como senal visible en margen disponible",
+);
+
+assertEqual(
+  monthlyNetResultForEffectiveInputs({
+    monthlyIncome: 0,
+    savingsAmount: -9,
+  }),
+  0,
+  "Gasto sin ingreso confirmado no se aplica como perdida patrimonial",
+  "monthlyNetResult",
+);
+assertEqual(
+  monthlyNetResultForEffectiveInputs({
+    monthlyIncome: 2000,
+    savingsAmount: 1991,
+  }),
+  1991,
+  "Resultado mensual con ingreso confirmado alimenta patrimonio",
+  "monthlyNetResult",
 );
 
 const effectiveInputsCases: EffectiveInputsCase[] = [
   {
-    name: "Gastos confirmados reducen patrimonio efectivo",
+    name: "Gastos bajan patrimonio y cartera manual suma inversion confirmada",
     inputs: {
       netWorth: 10000,
       investedCapital: 3000,
@@ -2033,12 +2193,159 @@ const effectiveInputsCases: EffectiveInputsCase[] = [
     transactionSummary: {
       netWorthDelta: -700,
       investedDelta: 200,
+      monthlyNetResult: -700,
       recurringMonthlyExpenses: 150,
       expenseDelta: 700,
     },
-    netWorth: 9300,
+    netWorth: 9500,
     investedCapital: 3200,
     desiredMonthlySpend: 1350,
+  },
+  {
+    name: "Capital de inversiones derivado reemplaza capital manual sin borrar patrimonio no invertido",
+    inputs: {
+      netWorth: 10000,
+      investedCapital: 3000,
+      estimatedMonthlyIncome: 4500,
+      desiredMonthlySpend: 1200,
+      monthlyContribution: 500,
+      expectedAnnualReturn: 7,
+    },
+    transactionSummary: {
+      netWorthDelta: 0,
+      investedDelta: 200,
+      monthlyNetResult: 0,
+      recurringMonthlyExpenses: 0,
+      expenseDelta: 0,
+    },
+    investmentCapitalAmount: 5200,
+    netWorth: 12200,
+    investedCapital: 5200,
+    desiredMonthlySpend: 1200,
+  },
+  {
+    name: "Patrimonio efectivo no queda debajo del capital de inversiones",
+    inputs: {
+      netWorth: 1000,
+      investedCapital: 0,
+      estimatedMonthlyIncome: 4500,
+      desiredMonthlySpend: 1200,
+      monthlyContribution: 500,
+      expectedAnnualReturn: 7,
+    },
+    transactionSummary: {
+      netWorthDelta: 0,
+      investedDelta: 0,
+      monthlyNetResult: 0,
+      recurringMonthlyExpenses: 0,
+      expenseDelta: 0,
+    },
+    investmentCapitalAmount: 5200,
+    netWorth: 6200,
+    investedCapital: 5200,
+    desiredMonthlySpend: 1200,
+  },
+  {
+    name: "Activos patrimoniales suman patrimonio y solo los productivos suman capital de inversiones",
+    inputs: {
+      netWorth: 10000,
+      investedCapital: 0,
+      estimatedMonthlyIncome: 4500,
+      desiredMonthlySpend: 1200,
+      monthlyContribution: 500,
+      expectedAnnualReturn: 7,
+    },
+    transactionSummary: {
+      netWorthDelta: 0,
+      investedDelta: 0,
+      monthlyNetResult: 0,
+      recurringMonthlyExpenses: 0,
+      expenseDelta: 0,
+    },
+    investmentCapitalAmount: 5200,
+    wealthAssets: [
+      {
+        id: "home",
+        name: "Casa",
+        category: "vivienda",
+        estimatedValue: 100000,
+        debtBalance: 20000,
+        countsAsInvestmentCapital: false,
+      },
+      {
+        id: "rental",
+        name: "Inmueble alquilado",
+        category: "inmueble_inversion",
+        estimatedValue: 50000,
+        debtBalance: 10000,
+        countsAsInvestmentCapital: true,
+      },
+    ],
+    netWorth: 125200,
+    investedCapital: 45200,
+    desiredMonthlySpend: 1200,
+  },
+  {
+    name: "Resultado mensual confirmado reemplaza flujo historico para patrimonio actual",
+    inputs: {
+      netWorth: 10000,
+      investedCapital: 0,
+      estimatedMonthlyIncome: 4500,
+      desiredMonthlySpend: 1200,
+      monthlyContribution: 500,
+      expectedAnnualReturn: 7,
+    },
+    transactionSummary: {
+      netWorthDelta: -5000,
+      investedDelta: 0,
+      monthlyNetResult: 250,
+      recurringMonthlyExpenses: 0,
+      expenseDelta: 0,
+    },
+    wealthAssets: [
+      {
+        id: "cash",
+        name: "Efectivo",
+        category: "efectivo",
+        estimatedValue: 1000,
+        debtBalance: 0,
+        countsAsInvestmentCapital: false,
+      },
+    ],
+    netWorth: 1250,
+    investedCapital: 0,
+    desiredMonthlySpend: 1200,
+  },
+  {
+    name: "Gasto sin ingreso mensual comparable no reduce patrimonio actual",
+    inputs: {
+      netWorth: 0,
+      investedCapital: 0,
+      estimatedMonthlyIncome: 2000,
+      desiredMonthlySpend: 1200,
+      monthlyContribution: 500,
+      expectedAnnualReturn: 7,
+    },
+    transactionSummary: {
+      netWorthDelta: -9,
+      investedDelta: 0,
+      monthlyNetResult: 0,
+      recurringMonthlyExpenses: 9,
+      expenseDelta: 0,
+    },
+    wealthAssets: [
+      {
+        id: "bot-asset",
+        name: "Bot especulacion",
+        category: "inmueble_inversion",
+        estimatedValue: 2000,
+        debtBalance: 0,
+        countsAsInvestmentCapital: false,
+      },
+    ],
+    netWorth: 2000,
+    investedCapital: 0,
+    desiredMonthlySpend: 1209,
   },
 ];
 
@@ -2048,7 +2355,7 @@ for (const testCase of effectiveInputsCases) {
 
 const transactionSummaryCases: TransactionSummaryCase[] = [
   {
-    name: "Gasto confirmado baja patrimonio",
+    name: "Gasto confirmado baja el flujo neto confirmado",
     transactions: [
       {
         type: "gasto",
@@ -2100,6 +2407,76 @@ const transactionSummaryCases: TransactionSummaryCase[] = [
     netWorthDelta: -25,
     confirmedExpenses: 25,
     monthlyConfirmedExpenses: 25 / 12,
+  },
+  {
+    name: "Deuda confirmada separa delta de deuda para patrimonio actual",
+    transactions: [
+      {
+        type: "deuda",
+        amount: 400,
+        date: "2026-06-20",
+        category: "tarjeta",
+        recurring: false,
+        intent: "real",
+        ignored: false,
+      },
+    ],
+    netWorthDelta: -400,
+    debtDelta: -400,
+    confirmedExpenses: 400,
+    monthlyConfirmedExpenses: 0,
+  },
+  {
+    name: "Gasto mensual confirmado sin ingreso confirmado reduce flujo neto",
+    transactions: [
+      {
+        type: "gasto",
+        amount: 150,
+        date: "2026-06-20",
+        category: "transporte",
+        recurring: true,
+        intent: "real",
+        ignored: false,
+      },
+    ],
+    netWorthDelta: -150,
+    confirmedExpenses: 150,
+    monthlyConfirmedExpenses: 150,
+  },
+  {
+    name: "Flujo mensual netea ingresos con gastos confirmados",
+    transactions: [
+      {
+        type: "ingreso",
+        amount: 1200,
+        date: "2026-06-20",
+        category: "salario",
+        recurring: false,
+        intent: "real",
+        ignored: false,
+      },
+      {
+        type: "gasto",
+        amount: 700,
+        date: "2026-06-20",
+        category: "comida",
+        recurring: false,
+        intent: "real",
+        ignored: false,
+      },
+      {
+        type: "gasto",
+        amount: 150,
+        date: "2026-06-20",
+        category: "transporte",
+        recurring: true,
+        intent: "real",
+        ignored: false,
+      },
+    ],
+    netWorthDelta: 350,
+    confirmedExpenses: 850,
+    monthlyConfirmedExpenses: 700 / 12 + 150,
   },
 ];
 
@@ -2745,6 +3122,7 @@ function runMonthlyReviewCase(expected: MonthlyReviewCase) {
   const analysis = analyzeMonthlyReview({
     transactions: expected.transactions,
     today: new Date("2026-06-18T12:00:00Z"),
+    confirmedMonthlyIncome: expected.confirmedMonthlyIncome,
   });
 
   assertEqual(analysis.status, expected.status, expected.name, "status");
@@ -2780,6 +3158,14 @@ function runMonthlyReviewCase(expected: MonthlyReviewCase) {
     "emotionalPurchaseCount",
   );
   assertEqual(analysis.savingRate, expected.savingRate, expected.name, "savingRate");
+  if (expected.savingsAmount !== undefined) {
+    assertEqual(
+      analysis.savingsAmount,
+      expected.savingsAmount,
+      expected.name,
+      "savingsAmount",
+    );
+  }
   assertEqual(
     analysis.primaryAction,
     expected.primaryAction,
@@ -2792,6 +3178,10 @@ function runEffectiveInputsCase(expected: EffectiveInputsCase) {
   const effectiveInputs = calculateEffectiveInputs(
     expected.inputs,
     expected.transactionSummary,
+    {
+      investmentCapitalAmount: expected.investmentCapitalAmount,
+      wealthAssets: expected.wealthAssets,
+    },
   );
 
   assertEqual(effectiveInputs.netWorth, expected.netWorth, expected.name, "netWorth");
@@ -2813,6 +3203,9 @@ function runTransactionSummaryCase(expected: TransactionSummaryCase) {
   const summary = confirmedTransactionsSummary(expected.transactions);
 
   assertEqual(summary.netWorthDelta, expected.netWorthDelta, expected.name, "netWorthDelta");
+  if (expected.debtDelta !== undefined) {
+    assertEqual(summary.debtDelta, expected.debtDelta, expected.name, "debtDelta");
+  }
   if (expected.investedDelta !== undefined) {
     assertEqual(
       summary.investedDelta,

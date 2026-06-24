@@ -30,9 +30,34 @@ export const DEFAULT_FREEDOM_INPUTS: FreedomInputs = {
   expectedAnnualReturn: 7,
 };
 
+export type WealthAssetCategory =
+  | "vivienda"
+  | "vehiculo"
+  | "efectivo"
+  | "inmueble_inversion"
+  | "otro";
+
+export type WealthAsset = {
+  id: string;
+  name: string;
+  category: WealthAssetCategory;
+  estimatedValue: number;
+  debtBalance: number;
+  countsAsInvestmentCapital: boolean;
+};
+
+export type WealthAssetsSummary = {
+  totalEstimatedValue: number;
+  totalDebtBalance: number;
+  netWorthAmount: number;
+  investmentCapitalAmount: number;
+};
+
 export type EffectiveInputsTransactionSummary = {
   netWorthDelta: number;
   investedDelta: number;
+  debtDelta?: number;
+  monthlyNetResult?: number;
   recurringMonthlyExpenses: number;
 };
 
@@ -655,15 +680,11 @@ export const DEFAULT_BOT_OPERA24HS_INVESTMENT: BotOpera24hsInvestment = {
   name: "Bot especulacion (trading algoritmico)",
   botNumber: "Bot 1",
   startDate: "2026-01-01",
-  initialCapital: 1000,
-  monthlyContribution: 100,
+  initialCapital: 0,
+  monthlyContribution: 0,
   reinvestmentRule: "Reinvertir cuando el capital pendiente alcance el minimo.",
   reinvestmentMinimum: 500,
-  monthlyResults: [
-    { month: "2026-01", amount: 0 },
-    { month: "2026-02", amount: 0 },
-    { month: "2026-03", amount: 0 },
-  ],
+  monthlyResults: [],
 };
 
 export const DEFAULT_WEALTH_MILESTONES: readonly WealthMilestone[] = [
@@ -775,13 +796,141 @@ export function freedomProgressMetrics({
 export function calculateEffectiveInputs(
   inputs: FreedomInputs,
   transactionSummary: EffectiveInputsTransactionSummary,
+  options: {
+    investmentCapitalAmount?: number;
+    wealthAssets?: WealthAsset[];
+  } = {},
 ): FreedomInputs {
+  const wealthAssets = options.wealthAssets ?? [];
+  const wealthAssetsSummary = analyzeWealthAssets(wealthAssets);
+  const hasExplicitWealthAssets = wealthAssets.length > 0;
+  const hasDerivedInvestmentCapital =
+    Number.isFinite(options.investmentCapitalAmount) &&
+    options.investmentCapitalAmount !== undefined &&
+    options.investmentCapitalAmount > 0;
+  const portfolioInvestmentCapital = hasDerivedInvestmentCapital
+    ? Math.max(0, options.investmentCapitalAmount ?? 0)
+    : inputs.investedCapital + transactionSummary.investedDelta;
+  const effectiveInvestmentCapital =
+    portfolioInvestmentCapital + wealthAssetsSummary.investmentCapitalAmount;
+  const nonInvestmentNetWorth = hasExplicitWealthAssets
+    ? wealthAssetsSummary.netWorthAmount -
+      wealthAssetsSummary.investmentCapitalAmount
+    : Math.max(0, inputs.netWorth - inputs.investedCapital);
+
   return {
     ...inputs,
-    netWorth: inputs.netWorth + transactionSummary.netWorthDelta,
-    investedCapital: inputs.investedCapital + transactionSummary.investedDelta,
+    netWorth:
+      nonInvestmentNetWorth +
+      effectiveInvestmentCapital +
+      (transactionSummary.monthlyNetResult ?? transactionSummary.netWorthDelta),
+    investedCapital: effectiveInvestmentCapital,
     desiredMonthlySpend:
       inputs.desiredMonthlySpend + transactionSummary.recurringMonthlyExpenses,
+  };
+}
+
+export function monthlyNetResultForEffectiveInputs({
+  monthlyIncome,
+  savingsAmount,
+}: Pick<MonthlyReviewAnalysis, "monthlyIncome" | "savingsAmount">) {
+  return monthlyIncome > 0 ? savingsAmount : 0;
+}
+
+export function analyzeWealthAssets(
+  assets: WealthAsset[] = [],
+): WealthAssetsSummary {
+  return assets.reduce<WealthAssetsSummary>(
+    (summary, asset) => {
+      const estimatedValue = Math.max(
+        0,
+        Number.isFinite(asset.estimatedValue) ? asset.estimatedValue : 0,
+      );
+      const debtBalance = Math.max(
+        0,
+        Number.isFinite(asset.debtBalance) ? asset.debtBalance : 0,
+      );
+      const netAmount = estimatedValue - debtBalance;
+
+      return {
+        totalEstimatedValue: summary.totalEstimatedValue + estimatedValue,
+        totalDebtBalance: summary.totalDebtBalance + debtBalance,
+        netWorthAmount: summary.netWorthAmount + netAmount,
+        investmentCapitalAmount: asset.countsAsInvestmentCapital
+          ? summary.investmentCapitalAmount + netAmount
+          : summary.investmentCapitalAmount,
+      };
+    },
+    {
+      totalEstimatedValue: 0,
+      totalDebtBalance: 0,
+      netWorthAmount: 0,
+      investmentCapitalAmount: 0,
+    },
+  );
+}
+
+export function normalizeWealthAssets(assets: unknown): WealthAsset[] {
+  if (!Array.isArray(assets)) {
+    return [];
+  }
+
+  return assets
+    .map((asset, index) => {
+      if (!asset || typeof asset !== "object") {
+        return undefined;
+      }
+
+      const record = asset as Partial<WealthAsset>;
+      const name =
+        typeof record.name === "string" && record.name.trim()
+          ? record.name.trim()
+          : "Activo patrimonial";
+      const category = normalizeWealthAssetCategory(record.category);
+      const estimatedValue = Number(record.estimatedValue);
+      const debtBalance = Number(record.debtBalance);
+
+      return {
+        id:
+          typeof record.id === "string" && record.id.trim()
+            ? record.id
+            : `asset-${index + 1}`,
+        name,
+        category,
+        estimatedValue: Number.isFinite(estimatedValue)
+          ? Math.max(0, estimatedValue)
+          : 0,
+        debtBalance: Number.isFinite(debtBalance) ? Math.max(0, debtBalance) : 0,
+        countsAsInvestmentCapital: Boolean(record.countsAsInvestmentCapital),
+      };
+    })
+    .filter((asset): asset is WealthAsset => Boolean(asset));
+}
+
+function normalizeWealthAssetCategory(
+  category: unknown,
+): WealthAssetCategory {
+  const categories: WealthAssetCategory[] = [
+    "vivienda",
+    "vehiculo",
+    "efectivo",
+    "inmueble_inversion",
+    "otro",
+  ];
+
+  return categories.includes(category as WealthAssetCategory)
+    ? (category as WealthAssetCategory)
+    : "otro";
+}
+
+export function createWealthAsset(): WealthAsset {
+  return {
+    id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: "",
+    category: "otro",
+    estimatedValue: 0,
+    debtBalance: 0,
+    countsAsInvestmentCapital: false,
   };
 }
 
@@ -802,6 +951,7 @@ export function confirmedTransactionsSummary(
 
       if (transaction.type === "deuda") {
         summary.netWorthDelta -= amount;
+        summary.debtDelta = (summary.debtDelta ?? 0) - amount;
         summary.confirmedExpenses += amount;
       }
 
@@ -877,6 +1027,7 @@ export function confirmedTransactionsSummary(
     {
       netWorthDelta: 0,
       investedDelta: 0,
+      debtDelta: 0,
       confirmedExpenses: 0,
       recurringMonthlyExpenses: 0,
       monthlyConfirmedExpenses: 0,
@@ -1297,17 +1448,20 @@ export function analyzeFinancialMargin({
 export function analyzeMonthlyReview({
   transactions,
   today = new Date(),
+  confirmedMonthlyIncome = 0,
 }: {
   transactions: MonthlyReviewTransaction[];
   today?: Date;
+  confirmedMonthlyIncome?: number;
 }): MonthlyReviewAnalysis {
   const monthKey = toMonthKey(today);
   const monthTransactions = transactions.filter(
     (transaction) =>
       isRealTransaction(transaction) && toMonthKey(transaction.date) === monthKey,
   );
+  const baseMonthlyIncome = normalizePositiveNumber(confirmedMonthlyIncome);
   const monthlyIncome = roundToTwo(
-    sumMonthlyReviewTransactions(monthTransactions, "ingreso"),
+    baseMonthlyIncome + sumMonthlyReviewTransactions(monthTransactions, "ingreso"),
   );
   const monthlyExpenses = roundToTwo(
     sumMonthlyReviewTransactions(monthTransactions, "gasto"),
@@ -1330,9 +1484,7 @@ export function analyzeMonthlyReview({
       );
     }, 0),
   );
-  const savingsAmount = roundToTwo(
-    Math.max(0, monthlyIncome - monthlyExpenses - debtAdded),
-  );
+  const savingsAmount = roundToTwo(monthlyIncome - monthlyExpenses - debtAdded);
   const savingRate =
     monthlyIncome > 0 ? roundToTwo((savingsAmount / monthlyIncome) * 100) : 0;
   const bigPurchaseCount = monthTransactions.filter(
@@ -1346,7 +1498,7 @@ export function analyzeMonthlyReview({
       transaction.type === "gasto" &&
       transaction.antiErrorReview?.applies === true,
   ).length;
-  const hasConfirmedData = monthTransactions.length > 0;
+  const hasConfirmedData = monthTransactions.length > 0 || baseMonthlyIncome > 0;
   const status = monthlyReviewStatus({
     hasConfirmedData,
     monthlyIncome,
@@ -1611,8 +1763,6 @@ export function analyzeWeeklyExecution({
       emotionalPurchaseCount,
       newDebtCount,
       investmentCount,
-      weekIncome,
-      completedItemIds,
     }),
     weekIncome,
     weekExpenses,
@@ -1690,16 +1840,12 @@ function weeklyExecutionRecommendation({
   emotionalPurchaseCount,
   newDebtCount,
   investmentCount,
-  weekIncome,
-  completedItemIds,
 }: {
   status: WeeklyExecutionStatus;
   weekTransactions: WeeklyExecutionTransaction[];
   emotionalPurchaseCount: number;
   newDebtCount: number;
   investmentCount: number;
-  weekIncome: number;
-  completedItemIds: Set<WeeklyExecutionItemId>;
 }) {
   if (status === "cumplido") {
     return "Semana cerrada. Mantener captura y revisar el proximo hito.";
@@ -3155,7 +3301,7 @@ function financialMarginSignals({
 
   if (marginIncomeSource === "estimated") {
     signals.push(
-      "Margen disponible usa ingreso fijo estimado hasta confirmar el sueldo del mes.",
+      "Margen disponible usa sueldo mensual confirmado desde Config.",
     );
   }
 

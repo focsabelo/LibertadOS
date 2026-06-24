@@ -9,10 +9,13 @@ import {
 } from "@/lib/finance";
 import {
   NOTE_FOLDERS,
+  NOTE_UI_FOLDERS,
   analyzeFinancialNote,
   createEmptyNote,
   deriveNoteTitle,
+  EDITABLE_FINANCIAL_TYPES,
   financialTypeLabel,
+  financialNoteAnalysisDate,
   intentLabel,
   isConfirmable,
   recalculateDetectedFinancialItem,
@@ -78,12 +81,8 @@ const quickCaptureActions = [
   { label: "Comida", text: "Gaste 0 en comida." },
   { label: "Transporte", text: "Gaste 0 en transporte." },
   { label: "Vivienda", text: "Pague 0 de vivienda mensual." },
-  { label: "Ingreso", text: "Cobre 0." },
-  { label: "Inversion", text: "Inverti 0 en ETF." },
-  {
-    label: "Compra grande",
-    text: "Quiero comprar 0 en una compra grande. Evaluar antes de decidir.",
-  },
+  { label: "Ingreso extra", text: "Cobre 0 de ingreso extra." },
+  { label: "Compra grande", text: "Compre 0 en una compra grande." },
 ];
 
 const detectedControlClass =
@@ -91,6 +90,7 @@ const detectedControlClass =
 
 const NOTE_CURRENCIES = ["UYU", "USD", "ARS", "EUR"] as const;
 const UY_DOLAR_API_USD_URL = "https://uy.dolarapi.com/v1/cotizaciones/usd";
+const NOTE_SAVE_DEBOUNCE_MS = 450;
 
 type FinancialNotesModuleProps = {
   supabase: SupabaseClient;
@@ -115,6 +115,12 @@ type DolarApiUsdResponse = {
   compra?: number;
   venta?: number;
   fechaActualizacion?: string;
+};
+
+type PendingNoteSave = {
+  note: FinancialNote;
+  mode: "draft" | "upsert";
+  clearTransactionsAfterSave?: boolean;
 };
 
 async function fetchDailyUsdQuote(): Promise<DailyUsdQuote> {
@@ -199,7 +205,7 @@ function reanalyzeDraftNotesWithQuote(
       ? note
       : {
           ...note,
-          analysis: analyzeFinancialNote(note.body, new Date(), {
+          analysis: analyzeFinancialNote(note.body, financialNoteAnalysisDate(note), {
             defaultCurrency: note.currency,
             dailyUsdQuote: quote,
           }),
@@ -235,6 +241,20 @@ export function FinancialNotesModule({
   >("loading");
   const dailyUsdQuoteRef = useRef<DailyUsdQuote | undefined>(undefined);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveCountRef = useRef(0);
+  const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const pendingNoteSavesRef = useRef<Map<string, PendingNoteSave>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      if (noteSaveTimerRef.current) {
+        clearTimeout(noteSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -363,15 +383,90 @@ export function FinancialNotesModule({
           selectedNote.confirmedTransactionIds.length > 0),
     );
 
-  function trackSave(action: Promise<unknown>) {
+  function enqueueSave(action: () => Promise<unknown>) {
+    pendingSaveCountRef.current += 1;
     setSyncStatus("saving");
     setSaveError("");
-    action
-      .then(() => setSyncStatus("saved"))
+
+    const run = saveQueueRef.current
+      .catch(() => undefined)
+      .then(() => action());
+
+    saveQueueRef.current = run
+      .then(() => {
+        pendingSaveCountRef.current = Math.max(
+          0,
+          pendingSaveCountRef.current - 1,
+        );
+
+        if (
+          pendingSaveCountRef.current === 0 &&
+          pendingNoteSavesRef.current.size === 0
+        ) {
+          setSyncStatus("saved");
+        }
+      })
       .catch((error: Error) => {
+        pendingSaveCountRef.current = Math.max(
+          0,
+          pendingSaveCountRef.current - 1,
+        );
         setSyncStatus("error");
         setSaveError(error.message);
       });
+  }
+
+  function scheduleNoteSave(
+    note: FinancialNote,
+    mode: PendingNoteSave["mode"],
+    options: Pick<PendingNoteSave, "clearTransactionsAfterSave"> = {},
+  ) {
+    pendingNoteSavesRef.current.set(note.id, { note, mode, ...options });
+    setSyncStatus("saving");
+    setSaveError("");
+
+    if (noteSaveTimerRef.current) {
+      clearTimeout(noteSaveTimerRef.current);
+    }
+
+    noteSaveTimerRef.current = setTimeout(() => {
+      flushScheduledNoteSaves();
+    }, NOTE_SAVE_DEBOUNCE_MS);
+  }
+
+  function flushScheduledNoteSaves() {
+    if (noteSaveTimerRef.current) {
+      clearTimeout(noteSaveTimerRef.current);
+      noteSaveTimerRef.current = undefined;
+    }
+
+    const pendingSaves = Array.from(pendingNoteSavesRef.current.values());
+    pendingNoteSavesRef.current.clear();
+
+    if (pendingSaves.length === 0) {
+      return;
+    }
+
+    enqueueSave(async () => {
+      for (const pending of pendingSaves) {
+        if (pending.mode === "draft") {
+          await saveFinancialNoteDraft(supabase, userId, pending.note);
+          if (pending.clearTransactionsAfterSave) {
+            setTransactions((current) =>
+              current.filter(
+                (transaction) => transaction.noteId !== pending.note.id,
+              ),
+            );
+          }
+        } else {
+          await upsertFinancialNote(supabase, userId, pending.note);
+        }
+      }
+    });
+  }
+
+  function cancelScheduledNoteSave(noteId: string) {
+    pendingNoteSavesRef.current.delete(noteId);
   }
 
   function analyzeNoteBody(body: string, defaultCurrency: string) {
@@ -387,11 +482,11 @@ export function FinancialNotesModule({
     setNotes((current) => [note, ...current]);
     setSelectedFolder(folder);
     setSelectedNoteId(note.id);
-    trackSave(upsertFinancialNote(supabase, userId, note));
+    enqueueSave(() => upsertFinancialNote(supabase, userId, note));
     requestAnimationFrame(() => editorRef.current?.focus());
   }
 
-  async function updateSelectedNote(body: string) {
+  function updateSelectedNote(body: string) {
     if (!selectedNote) {
       return;
     }
@@ -416,29 +511,14 @@ export function FinancialNotesModule({
     };
 
     if (noteWasConfirmed) {
-      if (syncStatus === "saving") {
-        return;
-      }
-
-      setSyncStatus("saving");
-      setSaveError("");
-
-      try {
-        await saveFinancialNoteDraft(supabase, userId, updatedNote);
-        setNotes((current) =>
-          current.map((note) =>
-            note.id === selectedNoteId ? updatedNote : note,
-          ),
-        );
-        setTransactions((current) =>
-          current.filter((transaction) => transaction.noteId !== selectedNoteId),
-        );
-        setSyncStatus("saved");
-      } catch (error) {
-        setSyncStatus("error");
-        setSaveError((error as Error).message);
-      }
-
+      setNotes((current) =>
+        current.map((note) =>
+          note.id === selectedNoteId ? updatedNote : note,
+        ),
+      );
+      scheduleNoteSave(updatedNote, "draft", {
+        clearTransactionsAfterSave: true,
+      });
       return;
     }
 
@@ -447,7 +527,7 @@ export function FinancialNotesModule({
         note.id === selectedNoteId ? updatedNote : note,
       ),
     );
-    trackSave(upsertFinancialNote(supabase, userId, updatedNote));
+    scheduleNoteSave(updatedNote, "upsert");
   }
 
   function appendQuickCapture(text: string) {
@@ -464,7 +544,7 @@ export function FinancialNotesModule({
 
       setNotes((current) => [quickNote, ...current]);
       setSelectedNoteId(note.id);
-      trackSave(upsertFinancialNote(supabase, userId, quickNote));
+      enqueueSave(() => upsertFinancialNote(supabase, userId, quickNote));
       return;
     }
 
@@ -493,30 +573,14 @@ export function FinancialNotesModule({
     };
 
     if (noteWasConfirmed) {
-      if (syncStatus === "saving") {
-        return;
-      }
-
-      setSyncStatus("saving");
-      setSaveError("");
-
-      saveFinancialNoteDraft(supabase, userId, updatedNote)
-        .then(() => {
-          setNotes((current) =>
-            current.map((note) =>
-              note.id === selectedNoteId ? updatedNote : note,
-            ),
-          );
-          setTransactions((current) =>
-            current.filter((transaction) => transaction.noteId !== selectedNoteId),
-          );
-          setSyncStatus("saved");
-        })
-        .catch((error: Error) => {
-          setSyncStatus("error");
-          setSaveError(error.message);
-        });
-
+      setNotes((current) =>
+        current.map((note) =>
+          note.id === selectedNoteId ? updatedNote : note,
+        ),
+      );
+      scheduleNoteSave(updatedNote, "draft", {
+        clearTransactionsAfterSave: true,
+      });
       return;
     }
 
@@ -525,7 +589,7 @@ export function FinancialNotesModule({
         note.id === selectedNoteId ? updatedNote : note,
       ),
     );
-    trackSave(upsertFinancialNote(supabase, userId, updatedNote));
+    scheduleNoteSave(updatedNote, "upsert");
   }
 
   function updateDetectedItem(
@@ -554,30 +618,14 @@ export function FinancialNotesModule({
     };
 
     if (noteWasConfirmed) {
-      if (syncStatus === "saving") {
-        return;
-      }
-
-      setSyncStatus("saving");
-      setSaveError("");
-
-      saveFinancialNoteDraft(supabase, userId, updatedNote)
-        .then(() => {
-          setNotes((current) =>
-            current.map((note) =>
-              note.id === selectedNoteId ? updatedNote : note,
-            ),
-          );
-          setTransactions((current) =>
-            current.filter((transaction) => transaction.noteId !== selectedNoteId),
-          );
-          setSyncStatus("saved");
-        })
-        .catch((error: Error) => {
-          setSyncStatus("error");
-          setSaveError(error.message);
-        });
-
+      setNotes((current) =>
+        current.map((note) =>
+          note.id === selectedNoteId ? updatedNote : note,
+        ),
+      );
+      scheduleNoteSave(updatedNote, "draft", {
+        clearTransactionsAfterSave: true,
+      });
       return;
     }
 
@@ -586,7 +634,7 @@ export function FinancialNotesModule({
         note.id === selectedNoteId ? updatedNote : note,
       ),
     );
-    trackSave(upsertFinancialNote(supabase, userId, updatedNote));
+    scheduleNoteSave(updatedNote, "upsert");
   }
 
   async function confirmDetectedItems() {
@@ -640,6 +688,8 @@ export function FinancialNotesModule({
   }
 
   function removeNote(selectedId: string) {
+    cancelScheduledNoteSave(selectedId);
+
     const remainingNotes = notes.filter((note) => note.id !== selectedId);
     const nextNote = remainingNotes.find(
       (note) => note.folder === selectedFolder,
@@ -651,7 +701,7 @@ export function FinancialNotesModule({
     setNotes(remainingNotes);
     setSelectedNoteId(nextNote?.id ?? "");
     setDeleteConfirmation(null);
-    trackSave(deleteFinancialNote(supabase, userId, selectedId));
+    enqueueSave(() => deleteFinancialNote(supabase, userId, selectedId));
   }
 
   function deleteSelectedNote() {
@@ -687,7 +737,7 @@ export function FinancialNotesModule({
               Notas
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
-              Captura, revisa y confirma antes de impactar el dashboard.
+              Registra gastos, compras grandes e ingresos extra que ya ocurrieron.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -749,7 +799,7 @@ export function FinancialNotesModule({
                 );
               }}
             >
-              {NOTE_FOLDERS.map((folder) => (
+              {NOTE_UI_FOLDERS.map((folder) => (
                 <option key={folder} value={folder}>
                   {folder} ({folderCounts[folder] ?? 0})
                 </option>
@@ -760,7 +810,7 @@ export function FinancialNotesModule({
 
         <aside className="hidden border-b border-stone-200 bg-[var(--surface-quiet)] p-2 lg:block lg:border-b-0 lg:border-r">
           <div className="grid gap-1">
-            {NOTE_FOLDERS.map((folder) => (
+            {NOTE_UI_FOLDERS.map((folder) => (
               <button
                 key={folder}
                 className={`flex min-h-9 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
@@ -869,7 +919,7 @@ export function FinancialNotesModule({
                       aria-label="Nota financiera"
                       className="libertad-field libertad-ledger h-full min-h-[430px] w-full resize-none rounded-md bg-white px-4 py-3 text-lg leading-8 text-stone-950 placeholder:text-stone-500 sm:min-h-[540px] lg:min-h-[620px]"
                       name="financial-note"
-                      placeholder="Ej: Hoy gaste 350 en comida, 90 en transporte y 1200 en ropa. Tambien cobre 28000 e inverti 15% en el broker…"
+                      placeholder="Ej: Hoy gaste 350 en comida, 90 en transporte y 1200 en ropa. Tambien cobre 500 de ingreso extra..."
                       value={selectedNote.body}
                       onChange={(event) => updateSelectedNote(event.target.value)}
                     />
@@ -897,7 +947,7 @@ export function FinancialNotesModule({
                           value={selectedSummary.total.toString()}
                         />
                         <PreviewStat
-                          label="Reales"
+                          label="Guardables"
                           value={selectedSummary.real.toString()}
                         />
                         <PreviewStat
@@ -934,9 +984,9 @@ export function FinancialNotesModule({
                       ? "Nota editada pendiente de reconfirmación. Sus movimientos anteriores ya no cuentan en el dashboard."
                       : confirmableCount > 0
                       ? selectedSummary.antiError > 0
-                        ? `${confirmableCount} movimiento(s) real(es) listos. Revisa el filtro anti-error antes de guardar.`
-                        : `${confirmableCount} movimiento(s) real(es) listos para guardar.`
-                      : "Intenciones, ideas o negaciones no se guardan como transacciones."}
+                        ? `${confirmableCount} registro(s) listo(s). Revisa el filtro anti-error antes de guardar.`
+                        : `${confirmableCount} registro(s) listo(s) para guardar.`
+                      : "Solo se guardan gastos, compras grandes o ingresos extra reales."}
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <button
@@ -1069,7 +1119,7 @@ function DetectedDataPanel({
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            <StatusPill label={`${summary.real} reales`} tone="green" />
+            <StatusPill label={`${summary.real} guardables`} tone="green" />
             {summary.antiError > 0 ? (
               <StatusPill
                 label={`${summary.antiError} filtro(s)`}
@@ -1106,15 +1156,16 @@ function DetectedItemCard({
   item: DetectedFinancialItem;
   onUpdate: (patch: Partial<DetectedFinancialItem>) => void;
 }) {
-  const blocked = item.intent !== "real";
+  const blocked = !isConfirmable(item);
+  const editableType = isEditableNoteType(item.type);
   const fireImpactLabel =
-    item.intent === "real" || item.intent === "negado"
+    isConfirmable(item)
       ? "Impacto en libertad"
-      : "Impacto potencial en libertad";
+      : "Impacto no guardado";
   const antiErrorFireImpactLabel =
-    item.intent === "real" || item.intent === "negado"
+    isConfirmable(item)
       ? "Impacto en libertad"
-      : "Impacto potencial en libertad";
+      : "Impacto no guardado";
 
   return (
     <div
@@ -1130,7 +1181,7 @@ function DetectedItemCard({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-stone-950">
-              {financialTypeLabel(item.type)}
+              {noteFinancialTypeLabel(item.type)}
             </p>
             <StatusPill
               label={`confianza ${item.confidence ?? "sin datos"}`}
@@ -1160,23 +1211,27 @@ function DetectedItemCard({
 
       <div className="mt-3 grid gap-2">
         <FieldRow label="Tipo">
-          <select
-            autoComplete="off"
-            className={detectedControlClass}
-            name={`type-${item.id}`}
-            value={item.type}
-            onChange={(event) =>
-              onUpdate({ type: event.target.value as FinancialType })
-            }
-          >
-            {["gasto", "ingreso", "inversion", "ahorro", "deuda", "decision"].map(
-              (type) => (
+          {editableType ? (
+            <select
+              autoComplete="off"
+              className={detectedControlClass}
+              name={`type-${item.id}`}
+              value={item.type}
+              onChange={(event) =>
+                onUpdate({ type: event.target.value as FinancialType })
+              }
+            >
+              {EDITABLE_FINANCIAL_TYPES.map((type) => (
                 <option key={type} value={type}>
-                  {financialTypeLabel(type as FinancialType)}
+                  {financialTypeLabel(type)}
                 </option>
-              ),
-            )}
-          </select>
+              ))}
+            </select>
+          ) : (
+            <div className={`${detectedControlClass} flex items-center bg-stone-100`}>
+              {noteFinancialTypeLabel(item.type)}
+            </div>
+          )}
         </FieldRow>
 
         <FieldRow label="Monto">
@@ -1303,11 +1358,30 @@ function DetectedItemCard({
 
       {blocked ? (
         <div className="mt-2 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
-          {intentLabel(item.intent)}: no se guarda como transaccion real.
+          No se guarda en Notas. Solo gastos, compras grandes e ingresos extra
+          reales pasan al dashboard.
         </div>
       ) : null}
     </div>
   );
+}
+
+function isEditableNoteType(
+  type: FinancialType,
+): type is (typeof EDITABLE_FINANCIAL_TYPES)[number] {
+  return EDITABLE_FINANCIAL_TYPES.some((editableType) => editableType === type);
+}
+
+function noteFinancialTypeLabel(type: FinancialType) {
+  if (type === "decision") {
+    return "No registrable";
+  }
+
+  if (type === "inversion" || type === "ahorro" || type === "deuda") {
+    return "Fuera de Notas";
+  }
+
+  return financialTypeLabel(type);
 }
 
 function AntiErrorPanel({
@@ -1342,7 +1416,7 @@ function AntiErrorPanel({
         <div>
           <p className="text-sm font-semibold">Filtro anti-error</p>
           <p className="mt-0.5 text-xs opacity-80">
-            Decision revisable, separada de los movimientos confirmados.
+            Compra grande revisable antes de guardar.
           </p>
         </div>
         <StatusPill
@@ -1448,11 +1522,11 @@ function antiErrorActionLabel(
   action: NonNullable<DetectedFinancialItem["antiErrorReview"]>["suggestedAction"],
 ) {
   const labels = {
-    esperar: "Esperar 48 horas antes de decidir.",
+    esperar: "Esperar 48 horas antes de registrar si no ocurrio.",
     revisar: "Revisar costo mensual, deuda y margen antes de confirmar.",
     descartar: "Descartar la alerta si la nota confirma que no ocurrio.",
     confirmar: "Confirmar solo si el movimiento ya ocurrio y fue revisado.",
-    convertir_en_plan: "Convertirlo en plan o meta, separado del dashboard.",
+    convertir_en_plan: "Dejarlo fuera del dashboard si todavia no ocurrio.",
   };
 
   return labels[action];
@@ -1765,9 +1839,11 @@ function summarizeDetectedItems(items: DetectedFinancialItem[]): DetectedSummary
     (summary, item) => {
       summary.total += 1;
 
+      const confirmable = isConfirmable(item);
+
       if (item.ignored) {
         summary.ignored += 1;
-      } else if (item.intent === "real") {
+      } else if (confirmable) {
         summary.real += 1;
       } else {
         summary.blocked += 1;
@@ -1789,7 +1865,7 @@ function summarizeDetectedItems(items: DetectedFinancialItem[]): DetectedSummary
         summary.highRisk += 1;
       }
 
-      if (!item.ignored && item.intent === "real") {
+      if (confirmable) {
         summary.freedomImpact += item.freedomImpact;
       }
 

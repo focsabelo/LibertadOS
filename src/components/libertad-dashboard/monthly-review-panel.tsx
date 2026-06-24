@@ -31,7 +31,8 @@ export function MonthlyReviewPanel({ analysis, onOpenNotes }: Props) {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
               Resume solo movimientos reales confirmados del mes. No crea
-              transacciones, no modifica patrimonio y no cambia el roadmap.
+              transacciones; el resultado mensual alimenta el patrimonio
+              mostrado.
             </p>
           </div>
           <span
@@ -67,8 +68,8 @@ export function MonthlyReviewPanel({ analysis, onOpenNotes }: Props) {
 
         {!analysis.hasConfirmedData ? (
           <div className="mt-5 rounded-md border border-dashed border-stone-300 bg-stone-50 p-4 text-sm leading-6 text-stone-700">
-            No hay movimientos reales confirmados para este mes. Confirma
-            ingresos y gastos desde Notas antes de cerrar la lectura mensual.
+            No hay sueldo confirmado ni movimientos reales para este mes. Carga
+            el sueldo en Configuracion y usa Notas para gastos e ingresos extra.
           </div>
         ) : null}
       </div>
@@ -99,9 +100,9 @@ export function MonthlyReviewPanel({ analysis, onOpenNotes }: Props) {
           </h3>
           <div className="mt-4 grid gap-2">
             <FireRow
-              label="Ahorro estimado"
+              label="Resultado del mes"
               value={currencyFormatter.format(analysis.savingsAmount)}
-              detail="Ingreso menos gastos y presion mensual de deuda."
+              detail="Ganancia o perdida: ingresos menos gastos y presion mensual de deuda."
             />
             <FireRow
               label="Deuda agregada"

@@ -25,8 +25,9 @@ export function FinancialMarginPanel({
             Margen financiero
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-            Mide libertad mensual operativa: ingreso confirmado o base cargada
-            en Config, gastos activos, deuda mensual y margen disponible.
+            Mide libertad mensual operativa: sueldo confirmado en Config,
+            ingresos extra en Notas, gastos activos, deuda mensual y margen
+            disponible.
           </p>
         </div>
         <div
@@ -46,7 +47,7 @@ export function FinancialMarginPanel({
         {analysis.estimatedMonthlyIncome > 0 &&
         analysis.marginIncomeSource === "confirmed" ? (
           <MetricCard
-            label="Margen estimado"
+            label="Margen con sueldo"
             value={currencyFormatter.format(
               analysis.estimatedAvailableMonthlyMargin,
             )}
@@ -102,18 +103,18 @@ export function FinancialMarginPanel({
             </p>
             <div className="mt-3 grid gap-2">
               <FireRow
-                label="Ingreso confirmado en Notas"
+                label="Ingresos extra confirmados"
                 value={currencyFormatter.format(analysis.monthlyIncome)}
-                detail={`Mes ${analysis.monthKey}; solo movimientos reales.`}
+                detail={`Mes ${analysis.monthKey}; movimientos reales desde Notas.`}
               />
               {analysis.estimatedMonthlyIncome > 0 ? (
                 <FireRow
-                  label="Ingreso base mensual"
+                  label="Sueldo mensual confirmado"
                   value={currencyFormatter.format(analysis.estimatedMonthlyIncome)}
                   detail={
                     analysis.monthlyIncome > 0
-                      ? "Referencia cargada en Config; no se suma al ingreso confirmado."
-                      : "Base cargada en Config para calcular el margen disponible."
+                      ? "Sueldo fijo cargado en Config; los ingresos extra van por Notas."
+                      : "Sueldo fijo cargado en Config para calcular el margen disponible."
                   }
                 />
               ) : null}
@@ -134,14 +135,14 @@ export function FinancialMarginPanel({
               />
               {analysis.estimatedMonthlyIncome > 0 ? (
                 <FireRow
-                  label="Margen estimado"
+                  label="Margen con sueldo"
                   value={currencyFormatter.format(
                     analysis.estimatedAvailableMonthlyMargin,
                   )}
                   detail={
                     analysis.marginIncomeSource === "estimated"
-                      ? "Base usada para el margen disponible hasta confirmar el sueldo en Notas."
-                      : "Referencia separada con ingreso base mensual."
+                      ? "Sueldo mensual confirmado usado para el margen disponible."
+                      : "Referencia separada con sueldo mensual confirmado."
                   }
                 />
               ) : null}
@@ -244,9 +245,9 @@ function financialMarginIncomeSourceDetail(
   source: ReturnType<typeof analyzeFinancialMargin>["marginIncomeSource"],
 ) {
   const details = {
-    confirmed: "Calculado con ingreso confirmado en Notas este mes.",
-    estimated: "Calculado con ingreso base mensual de Config.",
-    none: "Sin ingreso confirmado ni ingreso base mensual.",
+    confirmed: "Calculado con ingresos extra confirmados en Notas este mes.",
+    estimated: "Calculado con sueldo mensual confirmado en Config.",
+    none: "Sin sueldo confirmado ni ingresos extra del mes.",
   };
 
   return details[source];

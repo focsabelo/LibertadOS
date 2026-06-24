@@ -123,6 +123,18 @@ export const NOTE_FOLDERS: FinancialFolder[] = [
   "Macro / Liquidez",
 ];
 
+export const NOTE_UI_FOLDERS: FinancialFolder[] = [
+  "Captura rapida",
+  "Gastos",
+  "Ingresos",
+  "Compras grandes",
+];
+
+export const EDITABLE_FINANCIAL_TYPES: Exclude<
+  FinancialType,
+  "inversion" | "ahorro" | "deuda" | "decision"
+>[] = ["gasto", "ingreso"];
+
 export type AnalyzeFinancialNoteOptions = {
   defaultCurrency?: string;
   dailyUsdQuote?: DailyUsdQuote;
@@ -169,6 +181,18 @@ export function createEmptyNote(folder: FinancialFolder = "Captura rapida") {
     analysis: [],
     confirmedTransactionIds: [],
   } satisfies FinancialNote;
+}
+
+export function financialNoteAnalysisDate(
+  note: Pick<FinancialNote, "createdAt" | "updatedAt">,
+) {
+  const parsed = new Date(note.updatedAt || note.createdAt);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date();
+  }
+
+  return parsed;
 }
 
 export function analyzeFinancialNote(
@@ -297,10 +321,6 @@ export function inferFolderFromAnalysis(
     return "Compras grandes";
   }
 
-  if (analysis.some((item) => item.type === "inversion")) {
-    return "Inversiones";
-  }
-
   if (analysis.some((item) => item.type === "ingreso")) {
     return "Ingresos";
   }
@@ -315,10 +335,37 @@ export function inferFolderFromAnalysis(
 export function isConfirmable(item: DetectedFinancialItem) {
   return (
     item.intent === "real" &&
-    item.type !== "decision" &&
+    (item.type === "gasto" || isConfirmableExtraIncome(item)) &&
     item.amount > 0 &&
     !item.ignored
   );
+}
+
+function isConfirmableExtraIncome(item: DetectedFinancialItem) {
+  if (item.type !== "ingreso") {
+    return false;
+  }
+
+  if (item.incomeIncrease) {
+    return true;
+  }
+
+  return hasAny(item.sourceText, [
+    "ingreso extra",
+    "extra",
+    "adicional",
+    "bono",
+    "bonus",
+    "comision",
+    "freelance",
+    "freela",
+    "cliente",
+    "proyecto",
+    "reintegro",
+    "devolucion",
+    "venta",
+    "aguinaldo",
+  ]);
 }
 
 export function recalculateDetectedFinancialItem(
@@ -564,6 +611,10 @@ function detectType(text: string): FinancialType {
   }
 
   if (hasAny(text, ["ahorr"])) {
+    if (isSavingsFundedExpense(text)) {
+      return "gasto";
+    }
+
     return "ahorro";
   }
 
@@ -586,6 +637,14 @@ function detectType(text: string): FinancialType {
   }
 
   return "gasto";
+}
+
+function isSavingsFundedExpense(text: string) {
+  return (
+    hasAny(text, ["ahorro", "ahorros"]) &&
+    hasAny(text, ["saque", "retire", "use", "pague con", "desde mis ahorros"]) &&
+    hasAny(text, ["compr", "gaste", "pague"])
+  );
 }
 
 function detectCategory(text: string, type: FinancialType, indexHint: number) {

@@ -1,4 +1,8 @@
-import { modules, secondaryModules } from "../src/components/libertad-dashboard/types";
+import {
+  modules,
+  primaryModules,
+  secondaryModules,
+} from "../src/components/libertad-dashboard/types";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -8,6 +12,8 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const secondaryModuleIds = secondaryModules.map((module) => String(module.id));
 const secondaryModuleLabels = secondaryModules.map((module) => module.label);
+const primaryModuleIds = primaryModules.map((module) => String(module.id));
+const primaryModuleLabels = primaryModules.map((module) => module.label);
 const moduleIds = modules.map((module) => String(module.id));
 const moduleLabels = modules.map((module) => module.label);
 
@@ -22,8 +28,13 @@ assert(
 );
 
 assert(
-  secondaryModuleIds.includes("revision") && secondaryModuleLabels.includes("Revision"),
-  "advanced navigation should expose monthly review",
+  primaryModuleIds.includes("revision") && primaryModuleLabels.includes("Revision"),
+  "primary navigation should expose monthly review",
+);
+
+assert(
+  !secondaryModuleIds.includes("revision") && !secondaryModuleLabels.includes("Revision"),
+  "advanced navigation should not duplicate monthly review",
 );
 
 assert(

@@ -34,6 +34,15 @@ assertEqual(rent.category, "vivienda", "housing category is inferred");
 assertEqual(rent.monthlyAmount, 42000, "UYU amount is inferred");
 assertEqual(rent.currency, "UYU", "UYU currency is inferred");
 
+const localRent = createFixedMonthlyExpenseDraft("Alquiler $42000");
+
+assertEqual(localRent.monthlyAmount, 42000, "local peso amount is inferred");
+assertEqual(
+  localRent.currency,
+  "UYU",
+  "plain $ defaults to UYU for local fixed expenses",
+);
+
 const fallback = createFixedMonthlyExpenseDraft("");
 
 assertEqual(fallback.name, "Gasto fijo", "empty text gets fallback name");

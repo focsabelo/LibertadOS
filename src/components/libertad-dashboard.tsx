@@ -31,6 +31,7 @@ import {
   inputShellClass,
 } from "@/components/libertad-dashboard/form-styles";
 import { TargetPortfolioPanel } from "@/components/libertad-dashboard/portfolio-panel";
+import { WealthAssetsPanel } from "@/components/libertad-dashboard/wealth-assets-panel";
 import {
   MetricCard,
   SignalRow,
@@ -63,16 +64,19 @@ import {
   analyzeMonthlyReview,
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
+  analyzeWealthAssets,
   analyzeWealthRoadmap,
   annualSpend,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
+  createWealthAsset,
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_FREEDOM_INPUTS,
   DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   freedomNumber,
   freedomProgressMetrics,
+  monthlyNetResultForEffectiveInputs,
   normalizeBotOpera24hsInvestment,
   normalizeTargetPortfolioSettings,
   type BotOpera24hsInvestment,
@@ -81,6 +85,7 @@ import {
   type InvestmentPolicySettings,
   type PortfolioAssetClass,
   type TargetPortfolioSettings,
+  type WealthAsset,
   type WeeklyExecutionItemId,
   type WeeklyExecutionReview,
 } from "@/lib/finance";
@@ -170,6 +175,7 @@ export function LibertadDashboard() {
   const [weeklyExecutionReviews, setWeeklyExecutionReviews] = useState<
     WeeklyExecutionReview[]
   >([]);
+  const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
   const [roadmapSimulatedContribution, setRoadmapSimulatedContribution] =
     useState(0);
   const [incomeIncreaseRule, setIncomeIncreaseRule] =
@@ -316,6 +322,7 @@ export function LibertadDashboard() {
         setConfirmedTransactions([]);
         setFixedMonthlyExpenses([]);
         setWeeklyExecutionReviews([]);
+        setWealthAssets([]);
       });
       return;
     }
@@ -343,6 +350,7 @@ export function LibertadDashboard() {
         setPortfolioSettings(dashboardData.portfolioSettings);
         setBotOperaInvestment(dashboardData.botOperaInvestment);
         setWeeklyExecutionReviews(dashboardData.weeklyExecutionReviews);
+        setWealthAssets(dashboardData.wealthAssets);
         setRoadmapSimulatedContribution(
           dashboardData.roadmapSimulatedContribution,
         );
@@ -422,6 +430,7 @@ export function LibertadDashboard() {
       setSaveError("");
       saveDashboardSettings(supabase, userId, {
         inputs,
+        wealthAssets,
         roadmapSimulatedContribution,
         onboardingSeen,
       })
@@ -439,6 +448,7 @@ export function LibertadDashboard() {
     onboardingSeen,
     roadmapSimulatedContribution,
     supabase,
+    wealthAssets,
     userId,
   ]);
 
@@ -541,8 +551,12 @@ export function LibertadDashboard() {
     ],
   );
   const monthlyReview = useMemo(
-    () => analyzeMonthlyReview({ transactions: confirmedTransactions }),
-    [confirmedTransactions],
+    () =>
+      analyzeMonthlyReview({
+        transactions: confirmedTransactions,
+        confirmedMonthlyIncome: inputs.estimatedMonthlyIncome,
+      }),
+    [confirmedTransactions, inputs.estimatedMonthlyIncome],
   );
   const targetPortfolio = useMemo(
     () =>
@@ -556,6 +570,10 @@ export function LibertadDashboard() {
   const botOperaAnalysis = useMemo(
     () => analyzeBotOpera24hs(botOperaInvestment),
     [botOperaInvestment],
+  );
+  const wealthAssetsSummary = useMemo(
+    () => analyzeWealthAssets(wealthAssets),
+    [wealthAssets],
   );
   const weeklyExecution = useMemo(() => {
     const currentWeek = analyzeWeeklyExecution({
@@ -574,8 +592,28 @@ export function LibertadDashboard() {
   }, [confirmedTransactions, weeklyExecutionReviews]);
 
   const effectiveInputs = useMemo(
-    () => calculateEffectiveInputs(inputs, transactionSummary),
-    [inputs, transactionSummary],
+    () =>
+      calculateEffectiveInputs(
+        inputs,
+        {
+          ...transactionSummary,
+          monthlyNetResult: monthlyNetResultForEffectiveInputs(monthlyReview),
+        },
+        {
+          investmentCapitalAmount:
+            targetPortfolio.totalCurrentAmount > 0
+              ? targetPortfolio.totalCurrentAmount
+              : undefined,
+          wealthAssets,
+        },
+      ),
+    [
+      inputs,
+      monthlyReview,
+      targetPortfolio.totalCurrentAmount,
+      transactionSummary,
+      wealthAssets,
+    ],
   );
 
   const metrics = useMemo(() => {
@@ -791,6 +829,49 @@ export function LibertadDashboard() {
     setRoadmapSimulatedContribution(
       Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
     );
+  }
+
+  function addWealthAsset() {
+    setWealthAssets((current) => [...current, createWealthAsset()]);
+  }
+
+  function updateWealthAsset(
+    id: string,
+    key: keyof WealthAsset,
+    value: string | boolean,
+  ) {
+    setWealthAssets((current) =>
+      current.map((asset) => {
+        if (asset.id !== id) {
+          return asset;
+        }
+
+        if (key === "estimatedValue" || key === "debtBalance") {
+          const parsedValue = Number(value);
+
+          return {
+            ...asset,
+            [key]: Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
+          };
+        }
+
+        if (key === "countsAsInvestmentCapital") {
+          return {
+            ...asset,
+            countsAsInvestmentCapital: Boolean(value),
+          };
+        }
+
+        return {
+          ...asset,
+          [key]: value,
+        };
+      }),
+    );
+  }
+
+  function removeWealthAsset(id: string) {
+    setWealthAssets((current) => current.filter((asset) => asset.id !== id));
   }
 
   async function handleCreateFixedExpense() {
@@ -1080,10 +1161,6 @@ export function LibertadDashboard() {
               <h1 className="mt-1.5 text-2xl font-semibold tracking-normal text-white text-balance sm:text-3xl">
                 Sistema personal de libertad financiera
               </h1>
-              <p className="mt-1.5 max-w-[32ch] break-words text-sm leading-6 text-stone-300 sm:max-w-2xl">
-                Medi tu numero de libertad financiera, captura decisiones y
-                confirma notas antes de impactar datos.
-              </p>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <SyncStatusPill
                   label={saveStatusLabel(saveStatus)}
@@ -1215,7 +1292,7 @@ export function LibertadDashboard() {
                           : "Sin gasto mensual"}
                       </p>
                       <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
-                        Capital invertido objetivo para sostener tu gasto
+                        Capital de inversiones necesario para sostener tu gasto
                         mensual: gasto mensual deseado x 12 x 25.
                       </p>
                     </div>
@@ -1366,14 +1443,14 @@ export function LibertadDashboard() {
                   <MetricCard
                     label="Patrimonio actual"
                     value={
-                      effectiveInputs.netWorth > 0
+                      effectiveInputs.netWorth !== 0
                         ? currencyFormatter.format(effectiveInputs.netWorth)
                         : "Sin cargar"
                     }
                     tone="green"
                   />
                   <MetricCard
-                    label="Capital invertido"
+                    label="Capital de inversiones"
                     value={currencyFormatter.format(
                       effectiveInputs.investedCapital,
                     )}
@@ -1507,52 +1584,95 @@ export function LibertadDashboard() {
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  {fields.map((field) => (
-                    <label key={field.id} className="grid gap-2">
-                      <span className="text-sm font-medium text-stone-700">
-                        {field.label}
-                      </span>
-                      <div className={inputShellClass}>
-                        {field.prefix ? (
-                          <span className="mr-2 text-sm font-semibold text-stone-500">
-                            {field.prefix}
-                          </span>
-                        ) : null}
-                        <input
-                          autoComplete="off"
-                          className={inputClass}
-                          inputMode="decimal"
-                          min="0"
-                          name={field.id}
-                          placeholder={field.placeholder}
-                          step={field.step}
-                          type="number"
-                          value={
-                            baseFinancialInputKeys.includes(
-                              field.id as (typeof baseFinancialInputKeys)[number],
-                            ) && inputs[field.id] === 0
-                              ? ""
-                              : inputs[field.id]
-                          }
-                          onChange={(event) =>
-                            updateInput(field.id, event.target.value)
-                          }
-                        />
-                        {field.suffix ? (
-                          <span className="ml-2 text-sm font-semibold text-stone-500">
-                            {field.suffix}
-                          </span>
-                        ) : null}
-                      </div>
-                      {field.description ? (
-                        <span className="text-xs leading-5 text-stone-500">
-                          {field.description}
+                  <div className="grid gap-2">
+                    <span className="text-sm font-medium text-stone-700">
+                      Patrimonio actual
+                    </span>
+                    <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-3">
+                      <p className="libertad-number text-sm font-semibold text-stone-950">
+                        {currencyFormatter.format(effectiveInputs.netWorth)}
+                      </p>
+                    </div>
+                    <span className="text-xs leading-5 text-stone-500">
+                      Calculado como activos patrimoniales mas inversiones,
+                      mas ganancia o perdida confirmada del mes.
+                    </span>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-sm font-medium text-stone-700">
+                      Capital de inversiones
+                    </span>
+                    <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-3">
+                      <p className="libertad-number text-sm font-semibold text-stone-950">
+                        {currencyFormatter.format(
+                          effectiveInputs.investedCapital,
+                        )}
+                      </p>
+                    </div>
+                    <span className="text-xs leading-5 text-stone-500">
+                      Calculado desde Cartera de inversiones. Si todavia no
+                      cargaste una cartera, usa el capital manual guardado como
+                      respaldo.
+                    </span>
+                  </div>
+
+                  {fields
+                    .filter((field) => field.id !== "investedCapital")
+                    .map((field) => (
+                      <label key={field.id} className="grid gap-2">
+                        <span className="text-sm font-medium text-stone-700">
+                          {field.label}
                         </span>
-                      ) : null}
-                    </label>
-                  ))}
+                        <div className={inputShellClass}>
+                          {field.prefix ? (
+                            <span className="mr-2 text-sm font-semibold text-stone-500">
+                              {field.prefix}
+                            </span>
+                          ) : null}
+                          <input
+                            autoComplete="off"
+                            className={inputClass}
+                            inputMode="decimal"
+                            min="0"
+                            name={field.id}
+                            placeholder={field.placeholder}
+                            step={field.step}
+                            type="number"
+                            value={
+                              baseFinancialInputKeys.includes(
+                                field.id as (typeof baseFinancialInputKeys)[number],
+                              ) && inputs[field.id] === 0
+                                ? ""
+                                : inputs[field.id]
+                            }
+                            onChange={(event) =>
+                              updateInput(field.id, event.target.value)
+                            }
+                          />
+                          {field.suffix ? (
+                            <span className="ml-2 text-sm font-semibold text-stone-500">
+                              {field.suffix}
+                            </span>
+                          ) : null}
+                        </div>
+                        {field.description ? (
+                          <span className="text-xs leading-5 text-stone-500">
+                            {field.description}
+                          </span>
+                        ) : null}
+                      </label>
+                    ))}
                 </div>
               </section>
+
+              <WealthAssetsPanel
+                assets={wealthAssets}
+                summary={wealthAssetsSummary}
+                onAdd={addWealthAsset}
+                onChange={updateWealthAsset}
+                onRemove={removeWealthAsset}
+              />
 
               <FixedMonthlyExpensesPanel
                 actionStatus={fixedExpenseStatus}

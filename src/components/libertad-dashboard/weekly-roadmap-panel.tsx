@@ -430,7 +430,9 @@ function RoadmapValue({ label, value }: { label: string; value: string }) {
 }
 
 function roadmapBasisLabel(basis: MilestoneProgress["milestone"]["basis"]) {
-  return basis === "invested_capital" ? "capital invertido" : "patrimonio neto";
+  return basis === "invested_capital"
+    ? "capital de inversiones"
+    : "patrimonio neto";
 }
 
 function formatMonths(months?: number) {
