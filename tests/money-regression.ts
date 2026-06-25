@@ -109,6 +109,30 @@ assertEqual(
 );
 assertEqual(exactNoteItem.money.usdAmount, 20, "Detected UYU exact quote stores USD amount");
 
+const uyuFreedomImpactItem = analyzeFinancialNote(
+  "Gaste UYU 150 en gasoil",
+  new Date("2026-06-25T12:00:00Z"),
+  {
+    defaultCurrency: "UYU",
+    dailyUsdQuote: {
+      uyuPerUsd: 41.3,
+      date: "2026-06-25",
+      source: "DolarAPI",
+    },
+  },
+)[0];
+
+assertEqual(
+  uyuFreedomImpactItem.freedomImpact,
+  3750,
+  "UYU note item keeps native freedom impact for item-level display",
+);
+assertEqual(
+  uyuFreedomImpactItem.freedomImpactUsd,
+  90.75,
+  "UYU note item exposes USD freedom impact for dashboard summaries",
+);
+
 const summary = confirmedTransactionsSummary([
   {
     type: "gasto",

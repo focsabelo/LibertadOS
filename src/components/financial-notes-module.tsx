@@ -46,6 +46,12 @@ const currencyFormatter = new Intl.NumberFormat("es-UY", {
 });
 
 function formatCurrency(currency: string, amount: number) {
+  if (currency.toUpperCase() === "UYU") {
+    return `UYU ${amount.toLocaleString("es-UY", {
+      maximumFractionDigits: 0,
+    })}`;
+  }
+
   try {
     return new Intl.NumberFormat("es-UY", {
       style: "currency",
@@ -60,6 +66,12 @@ function formatCurrency(currency: string, amount: number) {
 }
 
 function formatCurrencyWithCents(currency: string, amount: number) {
+  if (currency.toUpperCase() === "UYU") {
+    return `UYU ${amount.toLocaleString("es-UY", {
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
   try {
     return new Intl.NumberFormat("es-UY", {
       style: "currency",
@@ -1863,11 +1875,11 @@ function summarizeDetectedItems(items: DetectedFinancialItem[]): DetectedSummary
       }
 
       if (confirmable) {
-        summary.freedomImpact += item.freedomImpact;
+        summary.freedomImpact += freedomImpactUsdForSummary(item);
       }
 
       if (!item.ignored && item.intent !== "real") {
-        summary.potentialFreedomImpact += item.freedomImpact;
+        summary.potentialFreedomImpact += freedomImpactUsdForSummary(item);
       }
 
       return summary;
@@ -1885,4 +1897,20 @@ function summarizeDetectedItems(items: DetectedFinancialItem[]): DetectedSummary
       potentialFreedomImpact: 0,
     },
   );
+}
+
+function freedomImpactUsdForSummary(item: DetectedFinancialItem) {
+  if (Number.isFinite(item.freedomImpactUsd)) {
+    return item.freedomImpactUsd ?? 0;
+  }
+
+  if (item.currency.toUpperCase() === "USD") {
+    return item.freedomImpact;
+  }
+
+  if (item.amount > 0 && item.money.conversionStatus !== "missing") {
+    return item.freedomImpact * (item.money.usdAmount / item.amount);
+  }
+
+  return 0;
 }

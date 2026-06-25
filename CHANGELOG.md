@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+* Notas convierte a USD el impacto real en libertad de gastos UYU antes de sumarlo en el resumen, y muestra UYU de forma explicita en el detalle detectado.
 * Negocios propios deja de ser placeholder y suma fichas editables con flujo, caja, capital, retiros, reinversion, deuda, valoracion prudente y persistencia en settings.
 * Inversiones permite quitar activos base de la asignacion y restaurarlos luego desde la misma seccion.
 * Inversiones permite agregar, editar y quitar inversiones personalizadas con objetivo y valor actual dentro de la cartera.

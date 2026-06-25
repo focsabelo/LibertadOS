@@ -84,6 +84,7 @@ export type DetectedFinancialItem = {
   confidence: ParserConfidence;
   money: Money;
   freedomImpact: number;
+  freedomImpactUsd?: number;
   sourceText: string;
   incomeIncrease?: boolean;
   ignored?: boolean;
@@ -463,6 +464,17 @@ export function recalculateDetectedFinancialItem(
     currency: item.currency,
     usdConversion,
   });
+  const freedomImpactUsd = calculateFreedomImpactUsd({
+    amount: item.amount,
+    currency: item.currency,
+    type: item.type,
+    intent: item.intent,
+    recurring: item.recurring,
+    normalizedText,
+    debt,
+    money,
+    usdConversion,
+  });
 
   return {
     ...item,
@@ -477,6 +489,7 @@ export function recalculateDetectedFinancialItem(
     }),
     money,
     freedomImpact,
+    freedomImpactUsd,
     usdConversion,
     antiErrorReview: buildAntiErrorReview({
       amount: item.amount,
@@ -580,6 +593,17 @@ function buildItem({
     currency,
     usdConversion,
   });
+  const freedomImpactUsd = calculateFreedomImpactUsd({
+    amount: effectiveAmount,
+    currency,
+    type,
+    intent,
+    recurring,
+    normalizedText,
+    debt,
+    money,
+    usdConversion,
+  });
   const confidence = detectParserConfidence({
     amount: effectiveAmount,
     category,
@@ -602,6 +626,7 @@ function buildItem({
     intent,
     confidence,
     freedomImpact,
+    freedomImpactUsd,
     sourceText: text || "Captura sin texto",
     incomeIncrease,
     usdConversion,
@@ -1923,6 +1948,71 @@ function calculateFreedomImpact({
   }
 
   return freedomNumber(recurring ? amount : amount / 12);
+}
+
+function calculateFreedomImpactUsd({
+  amount,
+  currency,
+  type,
+  intent,
+  recurring,
+  normalizedText,
+  debt,
+  money,
+  usdConversion,
+}: {
+  amount: number;
+  currency: string;
+  type: FinancialType;
+  intent: TransactionIntent;
+  recurring: boolean;
+  normalizedText: string;
+  debt?: DebtAnalysis;
+  money: Money;
+  usdConversion?: UsdConversion;
+}) {
+  if (
+    amount <= 0 ||
+    intent === "negado" ||
+    !shouldShowFireImpact({ type, normalizedText })
+  ) {
+    return 0;
+  }
+
+  if (type === "deuda" && debt?.monthlyMarginImpact) {
+    return freedomNumber(
+      usdAmountFromValue({
+        amount: debt.monthlyMarginImpact,
+        currency,
+        usdConversion,
+      }),
+    );
+  }
+
+  const usdAmount =
+    money.conversionStatus === "missing"
+      ? 0
+      : money.usdAmount;
+
+  return freedomNumber(recurring ? usdAmount : usdAmount / 12);
+}
+
+function usdAmountFromValue({
+  amount,
+  currency,
+  usdConversion,
+}: {
+  amount: number;
+  currency: string;
+  usdConversion?: UsdConversion;
+}) {
+  const money = createMoney({
+    amount,
+    currency,
+    usdConversion,
+  });
+
+  return money.conversionStatus === "missing" ? 0 : money.usdAmount;
 }
 
 function shouldShowFireImpact({
