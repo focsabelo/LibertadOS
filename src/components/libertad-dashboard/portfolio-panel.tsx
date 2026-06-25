@@ -2,8 +2,10 @@ import {
   analyzeBotOpera24hs,
   analyzeInvestmentPolicy,
   analyzeTargetPortfolio,
+  PORTFOLIO_ASSET_CLASSES,
   type BotOpera24hsInvestment,
   type PortfolioAssetClass,
+  type TargetPortfolioCustomAsset,
   type TargetPortfolioSettings,
 } from "@/lib/finance";
 import { currencyFormatter, percentFormatter } from "./formatting";
@@ -44,40 +46,59 @@ export function TargetPortfolioPanel({
   analysis,
   botAnalysis,
   botInvestment,
+  hiddenAssetClasses,
   manualAmounts,
+  onBaseAssetRemove,
+  onBaseAssetRestore,
   onBotFieldChange,
   onBotMonthlyResultChange,
   onBotMonthAdd,
   onBotMonthRemove,
+  onCustomAssetAdd,
+  onCustomAssetChange,
+  onCustomAssetRemove,
   onManualAmountChange,
   onTargetChange,
 }: {
   analysis: ReturnType<typeof analyzeTargetPortfolio>;
   botAnalysis: ReturnType<typeof analyzeBotOpera24hs>;
   botInvestment: BotOpera24hsInvestment;
+  hiddenAssetClasses: TargetPortfolioSettings["hiddenAssetClasses"];
   manualAmounts: TargetPortfolioSettings["manualAmounts"];
+  onBaseAssetRemove: (assetClass: PortfolioAssetClass) => void;
+  onBaseAssetRestore: (assetClass: PortfolioAssetClass) => void;
   onBotFieldChange: (
     key: keyof Omit<BotOpera24hsInvestment, "name" | "monthlyResults">,
     value: string,
   ) => void;
   onBotMonthlyResultChange: (
     index: number,
-    key: "month" | "amount",
+    key: "month" | "contribution" | "amount",
     value: string,
   ) => void;
   onBotMonthAdd: () => void;
   onBotMonthRemove: (month: string) => void;
+  onCustomAssetAdd: () => void;
+  onCustomAssetChange: (
+    id: string,
+    key: keyof Omit<TargetPortfolioCustomAsset, "id">,
+    value: string,
+  ) => void;
+  onCustomAssetRemove: (id: string) => void;
   onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
   onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
 }) {
   const policyAnalysis = analyzeInvestmentPolicy({ portfolio: analysis });
+  const hiddenBaseAssets = PORTFOLIO_ASSET_CLASSES.filter((asset) =>
+    hiddenAssetClasses.includes(asset.assetClass),
+  );
 
   return (
     <section className="libertad-surface rounded-lg p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-stone-950">
-            Cartera de inversiones
+            Inversiones
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
             Objetivo vs actual. Lectura descriptiva de asignacion patrimonial;
@@ -137,8 +158,8 @@ export function TargetPortfolioPanel({
               Politica conectada
             </p>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-              La edicion completa vive en Politica. Esta cartera usa tolerancia,
-              BTC, oro e inmuebles para detectar desalineaciones.
+              La edicion completa vive en Politica. Esta seccion usa
+              tolerancia, BTC, oro e inmuebles para detectar desalineaciones.
             </p>
           </div>
           <span
@@ -159,17 +180,64 @@ export function TargetPortfolioPanel({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3">
-        {analysis.assets.map((asset) => (
-          <PortfolioAssetRow
-            key={asset.assetClass}
-            asset={asset}
-            manualAmount={manualAmounts[asset.assetClass]}
-            onManualAmountChange={onManualAmountChange}
-            onTargetChange={onTargetChange}
-          />
-        ))}
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-stone-950">
+            Asignacion actual
+          </p>
+          <p className="mt-1 text-sm leading-6 text-stone-600">
+            Agrega inversiones que no esten en la lista base y carga su valor
+            actual manualmente.
+          </p>
+        </div>
+        <button
+          className="inline-flex min-h-10 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+          type="button"
+          onClick={onCustomAssetAdd}
+        >
+          Agregar inversion
+        </button>
       </div>
+
+      <div className="mt-3 grid gap-3">
+        {analysis.assets.map((asset) =>
+          asset.isCustom ? (
+            <PortfolioCustomAssetRow
+              key={asset.assetClass}
+              asset={asset}
+              onChange={onCustomAssetChange}
+              onRemove={onCustomAssetRemove}
+            />
+          ) : (
+            <PortfolioAssetRow
+              key={asset.assetClass}
+              asset={asset}
+              manualAmount={manualAmounts[asset.assetClass as PortfolioAssetClass]}
+              onRemove={onBaseAssetRemove}
+              onManualAmountChange={onManualAmountChange}
+              onTargetChange={onTargetChange}
+            />
+          ),
+        )}
+      </div>
+
+      {hiddenBaseAssets.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed border-stone-300 bg-white px-3 py-3">
+          <span className="text-xs font-semibold text-stone-600">
+            Ocultas
+          </span>
+          {hiddenBaseAssets.map((asset) => (
+            <button
+              key={asset.assetClass}
+              className="inline-flex min-h-9 items-center justify-center rounded-md border border-stone-200 bg-stone-50 px-2.5 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+              type="button"
+              onClick={() => onBaseAssetRestore(asset.assetClass)}
+            >
+              Restaurar {asset.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -192,7 +260,7 @@ function BotOpera24hsPanel({
   onMonthRemove: (month: string) => void;
   onMonthlyResultChange: (
     index: number,
-    key: "month" | "amount",
+    key: "month" | "contribution" | "amount",
     value: string,
   ) => void;
 }) {
@@ -215,7 +283,7 @@ function BotOpera24hsPanel({
     },
     {
       key: "monthlyContribution",
-      label: "Aporte mensual",
+      label: "Aporte mensual sugerido",
       type: "number",
       prefix: "USD",
       step: "50",
@@ -238,7 +306,7 @@ function BotOpera24hsPanel({
           </h3>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
             Registro operativo para medir aportes, capital y ganancias. Su
-            total asignado cuenta dentro de la cartera de inversiones.
+            total asignado cuenta dentro de Inversiones.
           </p>
         </div>
         <span className="inline-flex min-h-8 items-center rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700">
@@ -300,6 +368,11 @@ function BotOpera24hsPanel({
 
       <div className="libertad-card-grid mt-4 grid gap-3">
         <MetricCard
+          label="Capital inicial"
+          value={currencyFormatter.format(investment.initialCapital)}
+          tone="blue"
+        />
+        <MetricCard
           label="Capital total aportado"
           value={currencyFormatter.format(analysis.capitalTotalContributed)}
           tone="blue"
@@ -343,8 +416,8 @@ function BotOpera24hsPanel({
                 Historial mensual
               </p>
               <p className="text-xs leading-5 text-stone-500">
-                Cada fila suma el aporte al pendiente antes de evaluar la
-                reinversion.
+                Cada fila confirma el aporte real del mes y el resultado antes
+                de evaluar la reinversion.
               </p>
             </div>
             <button
@@ -352,15 +425,16 @@ function BotOpera24hsPanel({
               type="button"
               onClick={onMonthAdd}
             >
-              Agregar mes
+              Confirmar mes
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-stone-50 text-xs font-semibold text-stone-600">
                 <tr>
                   <th className="px-3 py-2">Mes</th>
-                  <th className="px-3 py-2">Dejo</th>
+                  <th className="px-3 py-2">Aporte</th>
+                  <th className="px-3 py-2">Resultado</th>
                   <th className="px-3 py-2">Operativo</th>
                   <th className="px-3 py-2">Pendiente aporte</th>
                   <th className="px-3 py-2">Pendiente ganancia</th>
@@ -382,6 +456,26 @@ function BotOpera24hsPanel({
                         value={investment.monthlyResults[index]?.month ?? month.month}
                         onChange={(event) =>
                           onMonthlyResultChange(index, "month", event.target.value)
+                        }
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        aria-label={`Aporte ${month.month}`}
+                        className="libertad-field h-10 w-28 rounded-md px-2 text-sm font-semibold text-stone-950 libertad-number"
+                        inputMode="decimal"
+                        step="10"
+                        type="number"
+                        value={
+                          investment.monthlyResults[index]?.contribution ??
+                          month.contribution
+                        }
+                        onChange={(event) =>
+                          onMonthlyResultChange(
+                            index,
+                            "contribution",
+                            event.target.value,
+                          )
                         }
                       />
                     </td>
@@ -446,9 +540,9 @@ function BotOpera24hsPanel({
             Separacion de capital
           </p>
           <p className="mt-2 text-sm leading-6 text-stone-600">
-            El aporte mensual no genera resultado hasta pasar al capital
-            operativo. Las ganancias pendientes tambien se muestran aparte para
-            no inflar el total aportado.
+            El aporte confirmado queda pendiente hasta llegar al minimo de
+            reinversion. El resultado positivo tambien queda pendiente y se
+            muestra separado.
           </p>
           <div className="mt-3 grid gap-2">
             <FireRow
@@ -478,11 +572,13 @@ function BotOpera24hsPanel({
 function PortfolioAssetRow({
   asset,
   manualAmount,
+  onRemove,
   onManualAmountChange,
   onTargetChange,
 }: {
   asset: ReturnType<typeof analyzeTargetPortfolio>["assets"][number];
   manualAmount: number;
+  onRemove: (assetClass: PortfolioAssetClass) => void;
   onManualAmountChange: (assetClass: PortfolioAssetClass, value: string) => void;
   onTargetChange: (assetClass: PortfolioAssetClass, value: string) => void;
 }) {
@@ -490,7 +586,7 @@ function PortfolioAssetRow({
 
   return (
     <div className="libertad-soft-panel rounded-md p-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_120px_150px] lg:items-end">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_120px_150px_auto] lg:items-end">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-stone-900">
@@ -511,13 +607,13 @@ function PortfolioAssetRow({
           </p>
         </div>
 
-        <label className="grid gap-2">
+        <label className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">
             Objetivo %
           </span>
           <input
             autoComplete="off"
-            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
+            className="libertad-field h-11 min-w-0 w-full rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
             inputMode="decimal"
             min="0"
             name={`target-${asset.assetClass}`}
@@ -525,18 +621,21 @@ function PortfolioAssetRow({
             type="number"
             value={asset.targetPercent}
             onChange={(event) =>
-              onTargetChange(asset.assetClass, event.target.value)
+              onTargetChange(
+                asset.assetClass as PortfolioAssetClass,
+                event.target.value,
+              )
             }
           />
         </label>
 
-        <label className="grid gap-2">
+        <label className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">
             Valor actual
           </span>
           <input
             autoComplete="off"
-            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
+            className="libertad-field h-11 min-w-0 w-full rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
             inputMode="decimal"
             min="0"
             name={`manual-${asset.assetClass}`}
@@ -544,10 +643,124 @@ function PortfolioAssetRow({
             type="number"
             value={manualAmount}
             onChange={(event) =>
-              onManualAmountChange(asset.assetClass, event.target.value)
+              onManualAmountChange(
+                asset.assetClass as PortfolioAssetClass,
+                event.target.value,
+              )
             }
           />
         </label>
+
+        <div className="flex items-end lg:justify-end">
+          <button
+            className="inline-flex min-h-11 items-center justify-center rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            type="button"
+            onClick={() => onRemove(asset.assetClass as PortfolioAssetClass)}
+          >
+            Quitar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PortfolioCustomAssetRow({
+  asset,
+  onChange,
+  onRemove,
+}: {
+  asset: ReturnType<typeof analyzeTargetPortfolio>["assets"][number];
+  onChange: (
+    id: string,
+    key: keyof Omit<TargetPortfolioCustomAsset, "id">,
+    value: string,
+  ) => void;
+  onRemove: (id: string) => void;
+}) {
+  const status = portfolioStatusCopy(asset.status);
+
+  return (
+    <div className="libertad-soft-panel rounded-md p-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_120px_150px_auto] lg:items-end">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="min-w-[180px] max-w-xs">
+              <span className="sr-only">Inversion</span>
+              <input
+                autoComplete="off"
+                className="h-8 w-full min-w-0 rounded-md border border-transparent bg-transparent px-0 text-sm font-semibold text-stone-900 outline-none transition-colors hover:border-stone-200 hover:bg-white hover:px-2 focus-visible:border-stone-300 focus-visible:bg-white focus-visible:px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                name={`custom-label-${asset.assetClass}`}
+                placeholder="Nombre"
+                type="text"
+                value={asset.label}
+                onChange={(event) =>
+                  onChange(asset.assetClass, "label", event.target.value)
+                }
+              />
+            </label>
+            <span
+              className={`rounded-full border px-2 py-1 text-xs font-semibold ${status.classes}`}
+            >
+              {status.label}
+            </span>
+            <span className="rounded-full border border-stone-200 bg-white px-2 py-1 text-xs font-medium text-stone-600">
+              {portfolioSourceCopy(asset.currentSource)}
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-stone-600">
+            Actual {percentFormatter.format(asset.currentPercent)}% vs objetivo{" "}
+            {percentFormatter.format(asset.targetPercent)}%.
+          </p>
+        </div>
+
+        <label className="grid min-w-0 gap-2">
+          <span className="text-xs font-semibold text-stone-600">
+            Objetivo %
+          </span>
+          <input
+            autoComplete="off"
+            className="libertad-field h-11 min-w-0 w-full rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
+            inputMode="decimal"
+            min="0"
+            name={`custom-target-${asset.assetClass}`}
+            step="0.5"
+            type="number"
+            value={asset.targetPercent}
+            onChange={(event) =>
+              onChange(asset.assetClass, "targetPercent", event.target.value)
+            }
+          />
+        </label>
+
+        <label className="grid min-w-0 gap-2">
+          <span className="text-xs font-semibold text-stone-600">
+            Valor actual
+          </span>
+          <input
+            autoComplete="off"
+            className="libertad-field h-11 min-w-0 w-full rounded-md px-3 text-sm font-semibold text-stone-950 libertad-number"
+            inputMode="decimal"
+            min="0"
+            name={`custom-current-${asset.assetClass}`}
+            step="100"
+            type="number"
+            value={asset.currentAmount}
+            onChange={(event) =>
+              onChange(asset.assetClass, "currentAmount", event.target.value)
+            }
+          />
+        </label>
+
+        <div className="flex items-end lg:justify-end">
+          <button
+            className="inline-flex min-h-11 items-center justify-center rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            type="button"
+            onClick={() => onRemove(asset.assetClass)}
+          >
+            Quitar
+          </button>
+        </div>
       </div>
     </div>
   );

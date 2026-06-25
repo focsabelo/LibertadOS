@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* Negocios propios deja de ser placeholder y suma fichas editables con flujo, caja, capital, retiros, reinversion, deuda, valoracion prudente y persistencia en settings.
+* Inversiones permite quitar activos base de la asignacion y restaurarlos luego desde la misma seccion.
+* Inversiones permite agregar, editar y quitar inversiones personalizadas con objetivo y valor actual dentro de la cartera.
+* Las inversiones personalizadas usan la misma estructura visual que los activos base.
+* Bot especulacion confirma el aporte real por cada mes, separado del resultado mensual.
+* Bot especulacion muestra el capital inicial como metrica junto al capital aportado y operativo.
+* La navegacion avanzada renombra Cartera como Inversiones y agrega la seccion Negocios propios para separar activos operativos de inversiones.
+* Roadmap mide el hito de US$500.000 contra capital de inversiones, elimina el retiro parcial 5% como hito base y mantiene US$1.000.000 contra patrimonio neto.
+* Las vistas laterales de Notas cuentan/listan gastos, ingresos y compras grandes desde los datos detectados, y el panel detectado ya no muestra el campo Categoria.
 * Notas queda enfocada en gastos, compras grandes e ingresos extra ya ocurridos; inversiones, deudas, ahorros y decisiones dejan de aparecer como opciones guardables desde ese flujo.
 * Gastos fijos interpreta `$` como UYU por defecto para reflejar el uso local en Uruguay; `USD`, `US$` y `U$S` siguen siendo dolares.
 * Bot Opera24hs arranca sin capital, aportes ni meses ficticios hasta que el usuario lo configure explicitamente.

@@ -62,6 +62,7 @@ export type AppSection =
   | "revision"
   | "margen"
   | "cartera"
+  | "negocios"
   | "deuda"
   | "roadmap"
   | "palancas"
@@ -118,8 +119,13 @@ export const secondaryModules: {
   },
   {
     id: "cartera",
-    label: "Cartera",
+    label: "Inversiones",
     description: "Asignacion objetivo",
+  },
+  {
+    id: "negocios",
+    label: "Negocios propios",
+    description: "Activos operativos",
   },
   {
     id: "deuda",

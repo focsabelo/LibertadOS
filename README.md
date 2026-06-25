@@ -350,8 +350,8 @@ Secuencia orientativa:
 2. usar ese capital como garantia para primer inmueble, si aplica;
 3. seguir invirtiendo;
 4. avanzar hacia 5 propiedades;
-5. evaluar retiro parcial al llegar a USD 500.000;
-6. continuar hacia USD 1.000.000.
+5. llegar a USD 500.000 en capital de inversiones;
+6. continuar hacia USD 1.000.000 de patrimonio neto.
 
 El roadmap separa progreso real de simulaciones y no promete rentabilidad.
 

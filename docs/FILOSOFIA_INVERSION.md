@@ -24,8 +24,10 @@ Los hitos de patrimonio deben respetar esta secuencia:
 2. Usar esos US$50.000 como garantia, no pignoracion, para comprar un inmueble apalancado, incluyendo la estrategia de Seccion 8 si aplica.
 3. Seguir invirtiendo aproximadamente US$250 mensuales.
 4. Comprar mas inmuebles hasta llegar a un minimo de 5 propiedades.
-5. Al llegar a US$500.000 de patrimonio, evaluar un retiro parcial del 5% anual, aproximadamente US$2.000 mensuales, y seguir reinvirtiendo el 20% del ingreso laboral.
-6. Continuar hasta el objetivo de US$1.000.000 de patrimonio.
+5. Llegar a US$500.000 en capital de inversiones, medido contra capital invertido o productivo, no contra patrimonio neto total.
+6. Continuar hasta el objetivo de US$1.000.000 de patrimonio neto.
+
+El retiro parcial no debe ser un hito base del roadmap. Si se evalua mas adelante, debe aparecer como decision o simulacion de flujo, no como permiso automatico para retirar capital.
 
 La app debe separar siempre progreso real de simulaciones. Los hitos no deben presentarse como promesas de rentabilidad.
 

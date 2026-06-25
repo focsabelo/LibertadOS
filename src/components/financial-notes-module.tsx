@@ -8,7 +8,6 @@ import {
   type DebtRisk,
 } from "@/lib/finance";
 import {
-  NOTE_FOLDERS,
   NOTE_UI_FOLDERS,
   analyzeFinancialNote,
   createEmptyNote,
@@ -18,6 +17,7 @@ import {
   financialNoteAnalysisDate,
   intentLabel,
   isConfirmable,
+  noteMatchesUiFolder,
   recalculateDetectedFinancialItem,
   type ConfirmedFinancialTransaction,
   type AntiErrorRiskLevel,
@@ -352,16 +352,20 @@ export function FinancialNotesModule({
   }, [hasLoaded, selectedNoteId]);
 
   const selectedNote = notes.find((note) => note.id === selectedNoteId);
-  const filteredNotes = notes.filter((note) => note.folder === selectedFolder);
+  const filteredNotes = notes.filter((note) =>
+    noteMatchesUiFolder(note, selectedFolder),
+  );
   const selectedSummary = useMemo(
     () => summarizeDetectedItems(selectedNote?.analysis ?? []),
     [selectedNote],
   );
 
   const folderCounts = useMemo(() => {
-    return NOTE_FOLDERS.reduce<Record<FinancialFolder, number>>(
+    return NOTE_UI_FOLDERS.reduce<Record<FinancialFolder, number>>(
       (accumulator, folder) => {
-        accumulator[folder] = notes.filter((note) => note.folder === folder).length;
+        accumulator[folder] = notes.filter((note) =>
+          noteMatchesUiFolder(note, folder),
+        ).length;
         return accumulator;
       },
       {} as Record<FinancialFolder, number>,
@@ -692,7 +696,7 @@ export function FinancialNotesModule({
 
     const remainingNotes = notes.filter((note) => note.id !== selectedId);
     const nextNote = remainingNotes.find(
-      (note) => note.folder === selectedFolder,
+      (note) => noteMatchesUiFolder(note, selectedFolder),
     );
 
     setTransactions((current) =>
@@ -795,7 +799,8 @@ export function FinancialNotesModule({
 
                 setSelectedFolder(folder);
                 setSelectedNoteId(
-                  notes.find((note) => note.folder === folder)?.id ?? "",
+                  notes.find((note) => noteMatchesUiFolder(note, folder))?.id ??
+                    "",
                 );
               }}
             >
@@ -822,7 +827,9 @@ export function FinancialNotesModule({
                 onClick={() => {
                   setSelectedFolder(folder);
                   setSelectedNoteId(
-                    notes.find((note) => note.folder === folder)?.id ?? "",
+                    notes.find((note) =>
+                      noteMatchesUiFolder(note, folder),
+                    )?.id ?? "",
                   );
                 }}
               >
@@ -1244,16 +1251,6 @@ function DetectedItemCard({
             type="number"
             value={item.amount}
             onChange={(event) => onUpdate({ amount: Number(event.target.value) })}
-          />
-        </FieldRow>
-
-        <FieldRow label="Categoria">
-          <input
-            autoComplete="off"
-            className={detectedControlClass}
-            name={`category-${item.id}`}
-            value={item.category}
-            onChange={(event) => onUpdate({ category: event.target.value })}
           />
         </FieldRow>
 

@@ -38,6 +38,19 @@ assert(
 );
 
 assert(
+  secondaryModuleIds.includes("cartera") &&
+    secondaryModuleLabels.includes("Inversiones") &&
+    !secondaryModuleLabels.includes("Cartera"),
+  "advanced navigation should expose Cartera as Inversiones",
+);
+
+assert(
+  secondaryModuleIds.includes("negocios") &&
+    secondaryModuleLabels.includes("Negocios propios"),
+  "advanced navigation should expose owned businesses",
+);
+
+assert(
   !secondaryModuleIds.includes("semana") && !secondaryModuleLabels.includes("Semana"),
   "advanced navigation should keep weekly execution inside Revision",
 );

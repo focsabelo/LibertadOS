@@ -57,6 +57,24 @@ const payload = createDashboardSettingsPayload({
         countsAsInvestmentCapital: false,
       },
     ],
+    ownedBusinesses: [
+      {
+        id: "biz-main",
+        name: "Agencia",
+        status: "activo",
+        monthlyRevenue: 3000,
+        monthlyCosts: 800,
+        cashBalance: 1200,
+        capitalContributed: 5000,
+        ownerWithdrawals: 600,
+        reinvestedAmount: 400,
+        debtBalance: 1000,
+        estimatedValue: 15000,
+        valuationConfidence: "media",
+        monthlyHours: 35,
+        notes: "Retiro prudente",
+      },
+    ],
     roadmapSimulatedContribution: 999,
     onboardingSeen: true,
   },
@@ -68,6 +86,11 @@ assertEqual(
   payload.inputs.wealthAssets[0]?.estimatedValue,
   100000,
   "dashboard payload carries wealth assets",
+);
+assertEqual(
+  payload.inputs.ownedBusinesses[0]?.monthlyRevenue,
+  3000,
+  "dashboard payload carries owned businesses",
 );
 assertEqual(
   payload.inputs.estimatedMonthlyIncome,
@@ -111,6 +134,11 @@ assertEqual(
 assertEqual(defaults.inputs.netWorth, 0, "default net worth starts empty");
 assertEqual(defaults.wealthAssets.length, 0, "default wealth assets start empty");
 assertEqual(
+  defaults.ownedBusinesses.length,
+  0,
+  "default owned businesses start empty",
+);
+assertEqual(
   defaults.inputs.investedCapital,
   0,
   "default invested capital starts empty",
@@ -146,6 +174,24 @@ const normalized = normalizeDashboardData({
           countsAsInvestmentCapital: false,
         },
       ],
+      ownedBusinesses: [
+        {
+          id: "biz-side",
+          name: "Producto digital",
+          status: "validando",
+          monthlyRevenue: 1000,
+          monthlyCosts: 150,
+          cashBalance: 700,
+          capitalContributed: 2000,
+          ownerWithdrawals: 100,
+          reinvestedAmount: 250,
+          debtBalance: 0,
+          estimatedValue: 6000,
+          valuationConfidence: "baja",
+          monthlyHours: 20,
+          notes: "Todavia experimental",
+        },
+      ],
     },
   },
   portfolio: {
@@ -154,7 +200,7 @@ const normalized = normalizeDashboardData({
     },
   },
   bot: {
-    monthlyResults: [{ month: "2026-05", amount: 12 }],
+    monthlyResults: [{ month: "2026-05", contribution: 250, amount: 12 }],
   },
 });
 
@@ -163,6 +209,11 @@ assertEqual(
   normalized.wealthAssets[0]?.debtBalance,
   5000,
   "partial settings normalize wealth assets",
+);
+assertEqual(
+  normalized.ownedBusinesses[0]?.estimatedValue,
+  6000,
+  "partial settings normalize owned businesses",
 );
 assertEqual(
   normalized.inputs.estimatedMonthlyIncome,
@@ -184,9 +235,53 @@ assertEqual(
   12,
   "partial bot rows normalize monthly results",
 );
+assertEqual(
+  normalized.botOperaInvestment.monthlyResults[0]?.contribution,
+  250,
+  "partial bot rows preserve monthly contribution",
+);
 assert(
   normalized.roadmapSimulatedContribution === 0,
   "missing roadmap simulation starts empty",
+);
+
+const normalizedCustomPortfolio = normalizeDashboardData({
+  portfolio: {
+    targets: {
+      hiddenAssetClasses: ["oro", "custom-ignorada"],
+      customAssets: [
+        {
+          id: "custom-letras",
+          label: "Letras Uruguay",
+          targetPercent: 8,
+          currentAmount: 2500,
+        },
+      ],
+    } as never,
+  },
+});
+
+assertEqual(
+  normalizedCustomPortfolio.portfolioSettings.customAssets[0]?.label,
+  "Letras Uruguay",
+  "portfolio custom assets are restored from targets metadata",
+);
+assertEqual(
+  normalizedCustomPortfolio.portfolioSettings.customAssets[0]?.currentAmount,
+  2500,
+  "portfolio custom assets preserve current amount",
+);
+assertEqual(
+  normalizedCustomPortfolio.portfolioSettings.hiddenAssetClasses.includes("oro"),
+  true,
+  "portfolio hidden base assets are restored from targets metadata",
+);
+assertEqual(
+  (normalizedCustomPortfolio.portfolioSettings.hiddenAssetClasses as string[]).includes(
+    "custom-ignorada",
+  ),
+  false,
+  "portfolio hidden base assets ignore unknown ids",
 );
 
 const normalizedLegacyNetWorth = normalizeDashboardData({

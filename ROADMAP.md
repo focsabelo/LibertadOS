@@ -187,8 +187,7 @@ Hitos iniciales:
 * US$50.000 invertidos;
 * primer inmueble;
 * 5 propiedades;
-* US$500.000 de patrimonio;
-* retiro parcial del 5% anual;
+* US$500.000 en capital de inversiones;
 * US$1.000.000 de patrimonio.
 
 Mostrar:

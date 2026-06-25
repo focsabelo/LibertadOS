@@ -4,11 +4,13 @@ import {
   DEFAULT_FREEDOM_INPUTS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
   normalizeBotOpera24hsInvestment,
+  normalizeOwnedBusinesses,
   normalizeTargetPortfolioSettings,
   normalizeWealthAssets,
   type BotOpera24hsInvestment,
   type FreedomInputs,
   type InvestmentPolicySettings,
+  type OwnedBusiness,
   type TargetPortfolioSettings,
   type WealthAsset,
   type WeeklyExecutionItemId,
@@ -31,11 +33,13 @@ import {
 type JsonRecord = Record<string, unknown>;
 type DashboardSettingsInputs = Partial<FreedomInputs> & {
   wealthAssets?: unknown;
+  ownedBusinesses?: unknown;
 };
 
 export type DashboardData = {
   inputs: FreedomInputs;
   wealthAssets: WealthAsset[];
+  ownedBusinesses: OwnedBusiness[];
   portfolioSettings: TargetPortfolioSettings;
   botOperaInvestment: BotOpera24hsInvestment;
   weeklyExecutionReviews: WeeklyExecutionReview[];
@@ -50,7 +54,10 @@ export type NotesData = {
 
 export type DashboardSettingsPayload = {
   user_id: string;
-  inputs: FreedomInputs & { wealthAssets: WealthAsset[] };
+  inputs: FreedomInputs & {
+    wealthAssets: WealthAsset[];
+    ownedBusinesses: OwnedBusiness[];
+  };
   roadmap_simulated_contribution: number;
   onboarding_seen: boolean;
 };
@@ -59,6 +66,7 @@ export function createDefaultDashboardData(): DashboardData {
   return {
     inputs: DEFAULT_FREEDOM_INPUTS,
     wealthAssets: [],
+    ownedBusinesses: [],
     portfolioSettings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
     botOperaInvestment: DEFAULT_BOT_OPERA24HS_INVESTMENT,
     weeklyExecutionReviews: [],
@@ -74,7 +82,11 @@ export function createDashboardSettingsPayload({
   userId: string;
   data: Pick<
     DashboardData,
-    "inputs" | "wealthAssets" | "roadmapSimulatedContribution" | "onboardingSeen"
+    | "inputs"
+    | "wealthAssets"
+    | "ownedBusinesses"
+    | "roadmapSimulatedContribution"
+    | "onboardingSeen"
   >;
 }): DashboardSettingsPayload {
   return {
@@ -82,6 +94,7 @@ export function createDashboardSettingsPayload({
     inputs: {
       ...data.inputs,
       wealthAssets: data.wealthAssets,
+      ownedBusinesses: data.ownedBusinesses,
     },
     roadmap_simulated_contribution: data.roadmapSimulatedContribution,
     onboarding_seen: data.onboardingSeen,
@@ -95,7 +108,10 @@ export function normalizeDashboardData(rows: {
     onboarding_seen: boolean;
   }> | null;
   portfolio?: Partial<{
-    targets: Partial<TargetPortfolioSettings["targets"]>;
+    targets: Partial<TargetPortfolioSettings["targets"]> & {
+      customAssets?: unknown;
+      hiddenAssetClasses?: unknown;
+    };
     manual_amounts: Partial<TargetPortfolioSettings["manualAmounts"]>;
     policy: Partial<InvestmentPolicySettings>;
   }> | null;
@@ -121,6 +137,9 @@ export function normalizeDashboardData(rows: {
   const normalizedWealthAssets = normalizeWealthAssets(
     rows.settings?.inputs?.wealthAssets,
   );
+  const normalizedOwnedBusinesses = normalizeOwnedBusinesses(
+    rows.settings?.inputs?.ownedBusinesses,
+  );
   const legacyManualWealthAssets =
     normalizedWealthAssets.length === 0
       ? legacyManualNetWorthAsset(normalizedInputs)
@@ -135,10 +154,12 @@ export function normalizeDashboardData(rows: {
       normalizedWealthAssets.length > 0
         ? normalizedWealthAssets
         : legacyManualWealthAssets,
+    ownedBusinesses: normalizedOwnedBusinesses,
     portfolioSettings: normalizeTargetPortfolioSettings({
       targets: rows.portfolio?.targets as TargetPortfolioSettings["targets"],
       manualAmounts: rows.portfolio
         ?.manual_amounts as TargetPortfolioSettings["manualAmounts"],
+      hiddenAssetClasses: rows.portfolio?.targets?.hiddenAssetClasses,
       policy: {
         ...rows.portfolio?.policy,
         ...policyFromRule,
@@ -280,7 +301,11 @@ export async function saveDashboardSettings(
   userId: string,
   data: Pick<
     DashboardData,
-    "inputs" | "wealthAssets" | "roadmapSimulatedContribution" | "onboardingSeen"
+    | "inputs"
+    | "wealthAssets"
+    | "ownedBusinesses"
+    | "roadmapSimulatedContribution"
+    | "onboardingSeen"
   >,
 ) {
   const { error } = await supabase.from("dashboard_settings").upsert(
@@ -299,10 +324,15 @@ export async function saveTargetPortfolio(
   settings: TargetPortfolioSettings,
 ) {
   const normalized = normalizeTargetPortfolioSettings(settings);
+  const targets = {
+    ...normalized.targets,
+    customAssets: normalized.customAssets,
+    hiddenAssetClasses: normalized.hiddenAssetClasses,
+  };
   const { error } = await supabase.from("target_portfolios").upsert(
     {
       user_id: userId,
-      targets: normalized.targets,
+      targets,
       manual_amounts: normalized.manualAmounts,
       policy: normalized.policy,
     },

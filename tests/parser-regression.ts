@@ -5,6 +5,7 @@ import {
   analyzeWeeklyExecution,
   analyzeLifestyleInflation,
   analyzeIncomeIncrease,
+  analyzeOwnedBusinesses,
   analyzeWealthAssets,
   analyzeMonthlyReview,
   analyzeFinancialMargin,
@@ -15,11 +16,14 @@ import {
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_INCOME_INCREASE_RULE_SETTINGS,
   DEFAULT_TARGET_PORTFOLIO_SETTINGS,
+  DEFAULT_WEALTH_MILESTONES,
   WEEKLY_EXECUTION_ITEMS,
   incomeRuleSuggestion,
   monthlyNetResultForEffectiveInputs,
+  normalizeOwnedBusinesses,
   normalizeIncomeIncreaseRuleSettings,
   normalizeInvestmentPolicySettings,
+  normalizeTargetPortfolioSettings,
   freedomNumber,
   type ConfirmedDebtLoadTransaction,
   type FinancialMarginFixedExpense,
@@ -40,6 +44,7 @@ import {
   EDITABLE_FINANCIAL_TYPES,
   financialNoteAnalysisDate,
   isConfirmable,
+  noteMatchesUiFolder,
   NOTE_UI_FOLDERS,
   type DetectedFinancialItem,
   type FinancialType,
@@ -767,6 +772,32 @@ assertEqual(
   "date",
 );
 
+const quickCaptureEditedExpenseItem = {
+  ...firstItem("pastillas dia despues para melisa 248", "UYU"),
+  type: "gasto" as FinancialType,
+  intent: "real" as TransactionIntent,
+};
+
+assertEqual(
+  noteMatchesUiFolder(
+    {
+      id: "note-ui-folder-expense",
+      folder: "Captura rapida",
+      currency: "UYU",
+      title: "pastillas dia despues para melisa 248",
+      body: "pastillas dia despues para melisa 248",
+      createdAt: "2026-06-23T12:00:00.000Z",
+      updatedAt: "2026-06-23T12:00:00.000Z",
+      analysis: [quickCaptureEditedExpenseItem],
+      confirmedTransactionIds: [],
+    },
+    "Gastos",
+  ),
+  true,
+  "Las vistas laterales usan el tipo detectado aunque la nota siga en captura rapida",
+  "matches",
+);
+
 const localMonthMargin = analyzeFinancialMargin({
   transactions: [marginTx("ingreso", 2500, "2026-06-30")],
   today: new Date("2026-07-01T02:30:00Z"),
@@ -1156,11 +1187,12 @@ type PortfolioCase = {
   targetTotalPercent: number;
   targetWarning: boolean;
   totalCurrentAmount: number;
-  asset: string;
-  currentAmount: number;
-  currentSource: "snapshot" | "movimientos" | "snapshot_movimientos";
+  asset?: string;
+  missingAsset?: string;
+  currentAmount?: number;
+  currentSource?: "snapshot" | "movimientos" | "snapshot_movimientos";
   targetPercent?: number;
-  status: "sobrepeso" | "bajo_peso" | "alineado";
+  status?: "sobrepeso" | "bajo_peso" | "alineado";
   policyMonthlyContributionTarget?: number;
   policyRebalanceTolerancePercent?: number;
 };
@@ -1195,6 +1227,7 @@ type BotOperaCase = {
   monthlyReturnPercent: number;
   accumulatedReturnPercent: number;
   month: string;
+  monthContribution?: number;
   monthOperationalCapitalStart: number;
   monthOperationalCapitalEnd: number;
   monthPendingContributionCapital: number;
@@ -1426,6 +1459,46 @@ const portfolioCases: PortfolioCase[] = [
     status: "alineado",
   },
   {
+    name: "Inversion personalizada suma al total de cartera",
+    settings: {
+      targets: DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets,
+      manualAmounts: DEFAULT_TARGET_PORTFOLIO_SETTINGS.manualAmounts,
+      customAssets: [
+        {
+          id: "custom-letras-uruguay",
+          label: "Letras Uruguay",
+          targetPercent: 8,
+          currentAmount: 2500,
+        },
+      ],
+    },
+    transactions: [],
+    targetTotalPercent: 108,
+    targetWarning: true,
+    totalCurrentAmount: 2500,
+    asset: "custom-letras-uruguay",
+    currentAmount: 2500,
+    currentSource: "snapshot",
+    targetPercent: 8,
+    status: "sobrepeso",
+  },
+  {
+    name: "Activo base oculto sale de la cartera",
+    settings: {
+      targets: DEFAULT_TARGET_PORTFOLIO_SETTINGS.targets,
+      manualAmounts: {
+        ...DEFAULT_TARGET_PORTFOLIO_SETTINGS.manualAmounts,
+        oro: 500,
+      },
+      hiddenAssetClasses: ["oro"],
+    },
+    transactions: [portfolioTx("oro", 100)],
+    targetTotalPercent: 90,
+    targetWarning: true,
+    totalCurrentAmount: 0,
+    missingAsset: "oro",
+  },
+  {
     name: "Cartera vacia queda alineada",
     settings: DEFAULT_TARGET_PORTFOLIO_SETTINGS,
     transactions: [],
@@ -1534,6 +1607,25 @@ const portfolioCases: PortfolioCase[] = [
 for (const testCase of portfolioCases) {
   runPortfolioCase(testCase);
 }
+
+const normalizedHiddenPortfolio = normalizeTargetPortfolioSettings({
+  hiddenAssetClasses: ["oro", "bitcoin", "custom-ignorada"],
+});
+
+assertEqual(
+  normalizedHiddenPortfolio.hiddenAssetClasses.includes("oro"),
+  true,
+  "portfolio hidden assets preserve base asset classes",
+  "hiddenAssetClasses",
+);
+assertEqual(
+  (normalizedHiddenPortfolio.hiddenAssetClasses as string[]).includes(
+    "custom-ignorada",
+  ),
+  false,
+  "portfolio hidden assets ignore non base asset ids",
+  "hiddenAssetClasses",
+);
 
 const normalizedPolicy = normalizeInvestmentPolicySettings({
   noTouchRule: "",
@@ -1694,11 +1786,48 @@ const roadmapCases: WealthRoadmapCase[] = [
     estimatedMonths: 10,
     isNext: true,
   },
+  {
+    name: "Hito 500k usa capital de inversiones",
+    inputs: {
+      netWorth: 620000,
+      investedCapital: 420000,
+      monthlyContribution: 4000,
+      annualReturnPercent: 0,
+    },
+    milestoneId: "invested_500k",
+    currentAmount: 420000,
+    distanceAmount: 80000,
+    progressPercent: 84,
+    estimatedMonths: 20,
+    isNext: true,
+  },
+  {
+    name: "Objetivo 1M usa patrimonio neto",
+    inputs: {
+      netWorth: 820000,
+      investedCapital: 520000,
+      monthlyContribution: 5000,
+      annualReturnPercent: 0,
+    },
+    milestoneId: "net_worth_1m",
+    currentAmount: 820000,
+    distanceAmount: 180000,
+    progressPercent: 82,
+    estimatedMonths: 36,
+    isNext: true,
+  },
 ];
 
 for (const testCase of roadmapCases) {
   runWealthRoadmapCase(testCase);
 }
+
+assert(
+  !DEFAULT_WEALTH_MILESTONES.some(
+    (milestone) => milestone.id === "partial_retirement_5pct",
+  ),
+  "Roadmap default no debe incluir retiro parcial como hito base",
+);
 
 const defaultBotAnalysis = analyzeBotOpera24hs(DEFAULT_BOT_OPERA24HS_INVESTMENT);
 
@@ -1784,6 +1913,36 @@ const botOperaCases: BotOperaCase[] = [
     monthPendingContributionCapital: 0,
     monthPendingProfitCapital: 0,
     monthReinvestedAmount: 500,
+  },
+  {
+    name: "Cada mes conserva su aporte confirmado",
+    investment: {
+      name: "Bot especulacion (trading algoritmico)",
+      botNumber: "Bot 1",
+      startDate: "2026-01-01",
+      initialCapital: 1000,
+      monthlyContribution: 100,
+      reinvestmentRule: "Reinvertir cuando el pendiente llegue al minimo.",
+      reinvestmentMinimum: 1000,
+      monthlyResults: [
+        { month: "2026-01", contribution: 100, amount: 0 },
+        { month: "2026-02", contribution: 250, amount: 0 },
+      ],
+    },
+    capitalTotalContributed: 1350,
+    currentOperationalCapital: 1000,
+    pendingCapital: 350,
+    amountUntilNextReinvestment: 650,
+    currentMonthResult: 0,
+    monthlyReturnPercent: 0,
+    accumulatedReturnPercent: 0,
+    month: "2026-02",
+    monthContribution: 250,
+    monthOperationalCapitalStart: 1000,
+    monthOperationalCapitalEnd: 1000,
+    monthPendingContributionCapital: 350,
+    monthPendingProfitCapital: 0,
+    monthReinvestedAmount: 0,
   },
 ];
 
@@ -2353,6 +2512,101 @@ for (const testCase of effectiveInputsCases) {
   runEffectiveInputsCase(testCase);
 }
 
+const normalizedOwnedBusinesses = normalizeOwnedBusinesses([
+  {
+    id: "biz-main",
+    name: "Agencia",
+    status: "activo",
+    monthlyRevenue: "3200",
+    monthlyCosts: 900,
+    cashBalance: 1500,
+    capitalContributed: 4000,
+    ownerWithdrawals: 700,
+    reinvestedAmount: 500,
+    debtBalance: 1200,
+    estimatedValue: 18000,
+    valuationConfidence: "media",
+    monthlyHours: 40,
+    notes: "Cliente principal estable",
+  },
+  {
+    name: "",
+    status: "fantasia",
+    monthlyRevenue: -10,
+    valuationConfidence: "certeza",
+  },
+]);
+
+assertEqual(
+  normalizedOwnedBusinesses[0]?.monthlyRevenue,
+  3200,
+  "owned businesses normalize numeric strings",
+  "monthlyRevenue",
+);
+assertEqual(
+  normalizedOwnedBusinesses[1]?.name,
+  "Negocio propio",
+  "owned businesses normalize empty names",
+  "name",
+);
+assertEqual(
+  normalizedOwnedBusinesses[1]?.status,
+  "idea",
+  "owned businesses normalize unknown statuses",
+  "status",
+);
+assertEqual(
+  normalizedOwnedBusinesses[1]?.monthlyRevenue,
+  0,
+  "owned businesses clamp negative revenue",
+  "monthlyRevenue",
+);
+
+const ownedBusinessesSummary = analyzeOwnedBusinesses(normalizedOwnedBusinesses);
+
+assertEqual(
+  ownedBusinessesSummary.totalMonthlyRevenue,
+  3200,
+  "owned businesses summarize revenue",
+  "totalMonthlyRevenue",
+);
+assertEqual(
+  ownedBusinessesSummary.totalMonthlyCosts,
+  900,
+  "owned businesses summarize costs",
+  "totalMonthlyCosts",
+);
+assertEqual(
+  ownedBusinessesSummary.totalMonthlyProfit,
+  2300,
+  "owned businesses summarize profit",
+  "totalMonthlyProfit",
+);
+assertEqual(
+  ownedBusinessesSummary.totalEstimatedValue,
+  18000,
+  "owned businesses summarize prudent estimated value",
+  "totalEstimatedValue",
+);
+assertEqual(
+  ownedBusinessesSummary.totalOperationalNetWorth,
+  18300,
+  "owned businesses summarize operational net value",
+  "totalOperationalNetWorth",
+);
+assertEqual(
+  ownedBusinessesSummary.activeCount,
+  1,
+  "owned businesses count active businesses",
+  "activeCount",
+);
+assertEqual(
+  ownedBusinessesSummary.averageProfitPerHour,
+  57.5,
+  "owned businesses calculate profit per hour",
+  "averageProfitPerHour",
+);
+
 const transactionSummaryCases: TransactionSummaryCase[] = [
   {
     name: "Gasto confirmado baja el flujo neto confirmado",
@@ -2760,8 +3014,21 @@ function runPortfolioCase(expected: PortfolioCase) {
   const asset = analysis.assets.find(
     (item) => item.assetClass === expected.asset,
   );
+  const missingAsset = analysis.assets.find(
+    (item) => item.assetClass === expected.missingAsset,
+  );
 
-  assert(asset, `${expected.name}: expected asset ${expected.asset}`);
+  if (expected.missingAsset) {
+    assert(
+      !missingAsset,
+      `${expected.name}: expected missing asset ${expected.missingAsset}`,
+    );
+  }
+
+  if (expected.asset) {
+    assert(asset, `${expected.name}: expected asset ${expected.asset}`);
+  }
+
   assertEqual(
     analysis.targetTotalPercent,
     expected.targetTotalPercent,
@@ -2780,19 +3047,26 @@ function runPortfolioCase(expected: PortfolioCase) {
     expected.name,
     "totalCurrentAmount",
   );
-  assertEqual(
-    asset.currentAmount,
-    expected.currentAmount,
-    expected.name,
-    "asset.currentAmount",
-  );
-  assertEqual(
-    asset.currentSource,
-    expected.currentSource,
-    expected.name,
-    "asset.currentSource",
-  );
-  if (expected.targetPercent !== undefined) {
+
+  if (asset && expected.currentAmount !== undefined) {
+    assertEqual(
+      asset.currentAmount,
+      expected.currentAmount,
+      expected.name,
+      "asset.currentAmount",
+    );
+  }
+
+  if (asset && expected.currentSource !== undefined) {
+    assertEqual(
+      asset.currentSource,
+      expected.currentSource,
+      expected.name,
+      "asset.currentSource",
+    );
+  }
+
+  if (asset && expected.targetPercent !== undefined) {
     assertEqual(
       asset.targetPercent,
       expected.targetPercent,
@@ -2800,7 +3074,10 @@ function runPortfolioCase(expected: PortfolioCase) {
       "asset.targetPercent",
     );
   }
-  assertEqual(asset.status, expected.status, expected.name, "asset.status");
+
+  if (asset && expected.status !== undefined) {
+    assertEqual(asset.status, expected.status, expected.name, "asset.status");
+  }
 
   if (expected.policyMonthlyContributionTarget !== undefined) {
     assertEqual(
@@ -2904,6 +3181,16 @@ function runBotOperaCase(expected: BotOperaCase) {
     expected.name,
     "currentMonthResult",
   );
+
+  if (expected.monthContribution !== undefined) {
+    assertEqual(
+      month.contribution,
+      expected.monthContribution,
+      expected.name,
+      "month.contribution",
+    );
+  }
+
   assertAlmostEqual(
     analysis.monthlyReturnPercent,
     expected.monthlyReturnPercent,

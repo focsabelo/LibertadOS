@@ -3,7 +3,6 @@ import {
 } from "@/components/libertad-dashboard/formatting";
 import {
   inputClass,
-  inputShellClass,
 } from "@/components/libertad-dashboard/form-styles";
 import type {
   WealthAsset,
@@ -115,13 +114,15 @@ function AssetRow({
   onRemove: (id: string) => void;
 }) {
   const netAmount = asset.estimatedValue - asset.debtBalance;
+  const compactInputShellClass =
+    "libertad-field flex h-11 min-w-0 w-full items-center rounded-md bg-white px-3";
 
   return (
     <div className="rounded-md border border-stone-200 bg-white p-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(160px,1.2fr)_150px_150px_150px_minmax(150px,1fr)_auto] lg:items-end">
-        <label className="grid gap-2">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_150px_150px_150px_minmax(180px,0.8fr)_auto] lg:items-end">
+        <label className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">Nombre</span>
-          <div className={inputShellClass}>
+          <div className={compactInputShellClass}>
             <input
               autoComplete="off"
               className={inputClass}
@@ -136,10 +137,10 @@ function AssetRow({
           </div>
         </label>
 
-        <label className="grid gap-2">
+        <label className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">Tipo</span>
           <select
-            className="libertad-field h-11 rounded-md px-3 text-sm font-semibold text-stone-950"
+            className="libertad-field h-11 min-w-0 w-full rounded-md px-3 text-sm font-semibold text-stone-950"
             name={`wealth-category-${asset.id}`}
             value={asset.category}
             onChange={(event) =>
@@ -154,9 +155,9 @@ function AssetRow({
           </select>
         </label>
 
-        <label className="grid gap-2">
+        <label className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">Valor</span>
-          <div className={inputShellClass}>
+          <div className={compactInputShellClass}>
             <span className="mr-2 text-sm font-semibold text-stone-500">
               USD
             </span>
@@ -176,9 +177,9 @@ function AssetRow({
           </div>
         </label>
 
-        <label className="grid gap-2">
+        <label className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">Deuda</span>
-          <div className={inputShellClass}>
+          <div className={compactInputShellClass}>
             <span className="mr-2 text-sm font-semibold text-stone-500">
               USD
             </span>
@@ -198,11 +199,11 @@ function AssetRow({
           </div>
         </label>
 
-        <div className="grid gap-2">
+        <div className="grid min-w-0 gap-2">
           <span className="text-xs font-semibold text-stone-600">
             Neto: {currencyFormatter.format(netAmount)}
           </span>
-          <label className="flex min-h-11 items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 text-sm font-semibold text-stone-800">
+          <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 text-sm font-semibold text-stone-800">
             <input
               className="size-4 accent-emerald-700"
               checked={asset.countsAsInvestmentCapital}
@@ -220,7 +221,7 @@ function AssetRow({
         </div>
 
         <button
-          className="inline-flex h-11 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-900 transition-colors hover:border-red-300 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          className="inline-flex h-11 min-w-0 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-900 transition-colors hover:border-red-300 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
           type="button"
           onClick={() => onRemove(asset.id)}
         >

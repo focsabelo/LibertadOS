@@ -21,6 +21,7 @@ import { FixedMonthlyExpensesPanel } from "@/components/libertad-dashboard/fixed
 import { IncomeIncreasePanel } from "@/components/libertad-dashboard/income-increase-panel";
 import { InvestmentPolicyPanel } from "@/components/libertad-dashboard/investment-policy-panel";
 import { MonthlyReviewPanel } from "@/components/libertad-dashboard/monthly-review-panel";
+import { OwnedBusinessesPanel } from "@/components/libertad-dashboard/owned-businesses-panel";
 import {
   currencyFormatter,
   numberFormatter,
@@ -62,6 +63,7 @@ import {
   analyzeIncomeIncrease,
   analyzeLifestyleInflation,
   analyzeMonthlyReview,
+  analyzeOwnedBusinesses,
   analyzeTargetPortfolio,
   analyzeWeeklyExecution,
   analyzeWealthAssets,
@@ -69,6 +71,7 @@ import {
   annualSpend,
   calculateEffectiveInputs,
   confirmedTransactionsSummary,
+  createOwnedBusiness,
   createWealthAsset,
   DEFAULT_BOT_OPERA24HS_INVESTMENT,
   DEFAULT_FREEDOM_INPUTS,
@@ -78,12 +81,15 @@ import {
   freedomProgressMetrics,
   monthlyNetResultForEffectiveInputs,
   normalizeBotOpera24hsInvestment,
+  normalizeOwnedBusinesses,
   normalizeTargetPortfolioSettings,
   type BotOpera24hsInvestment,
   type FreedomInputs,
   type IncomeIncreaseRuleSettings,
   type InvestmentPolicySettings,
+  type OwnedBusiness,
   type PortfolioAssetClass,
+  type TargetPortfolioCustomAsset,
   type TargetPortfolioSettings,
   type WealthAsset,
   type WeeklyExecutionItemId,
@@ -176,6 +182,7 @@ export function LibertadDashboard() {
     WeeklyExecutionReview[]
   >([]);
   const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
+  const [ownedBusinesses, setOwnedBusinesses] = useState<OwnedBusiness[]>([]);
   const [roadmapSimulatedContribution, setRoadmapSimulatedContribution] =
     useState(0);
   const [incomeIncreaseRule, setIncomeIncreaseRule] =
@@ -300,6 +307,8 @@ export function LibertadDashboard() {
       setSaveError("");
       setFixedMonthlyExpenses([]);
       setWeeklyExecutionReviews([]);
+      setWealthAssets([]);
+      setOwnedBusinesses([]);
       setFixedExpenseDraftText("");
       setEditingFixedExpenseId("");
       setFixedExpenseStatus("idle");
@@ -323,6 +332,7 @@ export function LibertadDashboard() {
         setFixedMonthlyExpenses([]);
         setWeeklyExecutionReviews([]);
         setWealthAssets([]);
+        setOwnedBusinesses([]);
       });
       return;
     }
@@ -351,6 +361,7 @@ export function LibertadDashboard() {
         setBotOperaInvestment(dashboardData.botOperaInvestment);
         setWeeklyExecutionReviews(dashboardData.weeklyExecutionReviews);
         setWealthAssets(dashboardData.wealthAssets);
+        setOwnedBusinesses(dashboardData.ownedBusinesses);
         setRoadmapSimulatedContribution(
           dashboardData.roadmapSimulatedContribution,
         );
@@ -431,6 +442,7 @@ export function LibertadDashboard() {
       saveDashboardSettings(supabase, userId, {
         inputs,
         wealthAssets,
+        ownedBusinesses,
         roadmapSimulatedContribution,
         onboardingSeen,
       })
@@ -446,6 +458,7 @@ export function LibertadDashboard() {
     hasLoaded,
     inputs,
     onboardingSeen,
+    ownedBusinesses,
     roadmapSimulatedContribution,
     supabase,
     wealthAssets,
@@ -574,6 +587,10 @@ export function LibertadDashboard() {
   const wealthAssetsSummary = useMemo(
     () => analyzeWealthAssets(wealthAssets),
     [wealthAssets],
+  );
+  const ownedBusinessesSummary = useMemo(
+    () => analyzeOwnedBusinesses(ownedBusinesses),
+    [ownedBusinesses],
   );
   const weeklyExecution = useMemo(() => {
     const currentWeek = analyzeWeeklyExecution({
@@ -717,6 +734,90 @@ export function LibertadDashboard() {
     );
   }
 
+  function addPortfolioCustomAsset() {
+    const timestamp = Date.now().toString(36);
+
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        customAssets: [
+          ...(current.customAssets ?? []),
+          {
+            id: `custom-${timestamp}`,
+            label: "Nueva inversion",
+            targetPercent: 0,
+            currentAmount: 0,
+          },
+        ],
+      }),
+    );
+  }
+
+  function updatePortfolioCustomAsset(
+    id: string,
+    key: keyof Omit<TargetPortfolioCustomAsset, "id">,
+    value: string,
+  ) {
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        customAssets: (current.customAssets ?? []).map((asset) => {
+          if (asset.id !== id) {
+            return asset;
+          }
+
+          if (key === "label") {
+            return {
+              ...asset,
+              label: value,
+            };
+          }
+
+          const parsedValue = Number(value);
+
+          return {
+            ...asset,
+            [key]: Number.isFinite(parsedValue) ? parsedValue : 0,
+          };
+        }),
+      }),
+    );
+  }
+
+  function removePortfolioCustomAsset(id: string) {
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        customAssets: (current.customAssets ?? []).filter(
+          (asset) => asset.id !== id,
+        ),
+      }),
+    );
+  }
+
+  function removePortfolioBaseAsset(assetClass: PortfolioAssetClass) {
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        hiddenAssetClasses: [
+          ...(current.hiddenAssetClasses ?? []),
+          assetClass,
+        ],
+      }),
+    );
+  }
+
+  function restorePortfolioBaseAsset(assetClass: PortfolioAssetClass) {
+    setPortfolioSettings((current) =>
+      normalizeTargetPortfolioSettings({
+        ...current,
+        hiddenAssetClasses: (current.hiddenAssetClasses ?? []).filter(
+          (hiddenAssetClass) => hiddenAssetClass !== assetClass,
+        ),
+      }),
+    );
+  }
+
   function updateInvestmentPolicy(
     key: keyof InvestmentPolicySettings,
     value: string,
@@ -772,7 +873,7 @@ export function LibertadDashboard() {
 
   function updateBotOperaMonthlyResult(
     index: number,
-    key: "month" | "amount",
+    key: "month" | "contribution" | "amount",
     value: string,
   ) {
     setBotOperaInvestment((current) =>
@@ -783,7 +884,7 @@ export function LibertadDashboard() {
             ? {
                 ...result,
                 [key]:
-                  key === "amount"
+                  key === "amount" || key === "contribution"
                     ? Number.isFinite(Number(value))
                       ? Number(value)
                       : 0
@@ -805,6 +906,7 @@ export function LibertadDashboard() {
             month: nextBotOperaMonth(
               current.monthlyResults[current.monthlyResults.length - 1]?.month,
             ),
+            contribution: current.monthlyContribution,
             amount: 0,
           },
         ],
@@ -872,6 +974,58 @@ export function LibertadDashboard() {
 
   function removeWealthAsset(id: string) {
     setWealthAssets((current) => current.filter((asset) => asset.id !== id));
+  }
+
+  function addOwnedBusiness() {
+    setOwnedBusinesses((current) => [...current, createOwnedBusiness()]);
+  }
+
+  function updateOwnedBusiness(
+    id: string,
+    key: keyof OwnedBusiness,
+    value: string,
+  ) {
+    const numericKeys: (keyof OwnedBusiness)[] = [
+      "monthlyRevenue",
+      "monthlyCosts",
+      "cashBalance",
+      "capitalContributed",
+      "ownerWithdrawals",
+      "reinvestedAmount",
+      "debtBalance",
+      "estimatedValue",
+      "monthlyHours",
+    ];
+
+    setOwnedBusinesses((current) =>
+      normalizeOwnedBusinesses(
+        current.map((business) => {
+          if (business.id !== id) {
+            return business;
+          }
+
+          if (numericKeys.includes(key)) {
+            const parsedValue = Number(value);
+
+            return {
+              ...business,
+              [key]: Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
+            };
+          }
+
+          return {
+            ...business,
+            [key]: value,
+          };
+        }),
+      ),
+    );
+  }
+
+  function removeOwnedBusiness(id: string) {
+    setOwnedBusinesses((current) =>
+      current.filter((business) => business.id !== id),
+    );
   }
 
   async function handleCreateFixedExpense() {
@@ -1072,7 +1226,7 @@ export function LibertadDashboard() {
             : needsMonthlyReviewAttention
               ? "Cerrar revision mensual"
               : needsPortfolioAttention
-                ? "Ajustar objetivos de cartera"
+                ? "Ajustar objetivos de inversiones"
                 : needsWeeklyExecution
                   ? "Cerrar revision semanal"
                   : isGuidedEmptyState
@@ -1091,7 +1245,7 @@ export function LibertadDashboard() {
           : needsMonthlyReviewAttention
             ? monthlyReview.primaryAction
             : needsPortfolioAttention
-              ? "Abrir cartera y corregir objetivos hasta 100%."
+              ? "Abrir inversiones y corregir objetivos hasta 100%."
               : weeklyExecution.recommendation;
   const primaryActionSection: AppSection = needsDebtAttention
     ? "deuda"
@@ -1141,7 +1295,7 @@ export function LibertadDashboard() {
     return (
       <AccessState
         title="Cargando tus datos"
-        body="Leyendo settings, cartera, bot y transacciones confirmadas."
+        body="Leyendo settings, inversiones, bot y transacciones confirmadas."
       />
     );
   }
@@ -1491,13 +1645,29 @@ export function LibertadDashboard() {
               analysis={targetPortfolio}
               botAnalysis={botOperaAnalysis}
               botInvestment={botOperaInvestment}
+              hiddenAssetClasses={portfolioSettings.hiddenAssetClasses}
               manualAmounts={portfolioSettings.manualAmounts}
               onBotFieldChange={updateBotOperaField}
               onBotMonthlyResultChange={updateBotOperaMonthlyResult}
               onBotMonthAdd={addBotOperaMonth}
               onBotMonthRemove={removeBotOperaMonth}
+              onCustomAssetAdd={addPortfolioCustomAsset}
+              onCustomAssetChange={updatePortfolioCustomAsset}
+              onCustomAssetRemove={removePortfolioCustomAsset}
+              onBaseAssetRemove={removePortfolioBaseAsset}
+              onBaseAssetRestore={restorePortfolioBaseAsset}
               onManualAmountChange={updatePortfolioManualAmount}
               onTargetChange={updatePortfolioTarget}
+            />
+          ) : null}
+
+          {activeSection === "negocios" ? (
+            <OwnedBusinessesPanel
+              businesses={ownedBusinesses}
+              summary={ownedBusinessesSummary}
+              onAdd={addOwnedBusiness}
+              onChange={updateOwnedBusiness}
+              onRemove={removeOwnedBusiness}
             />
           ) : null}
 
@@ -1611,8 +1781,8 @@ export function LibertadDashboard() {
                       </p>
                     </div>
                     <span className="text-xs leading-5 text-stone-500">
-                      Calculado desde Cartera de inversiones. Si todavia no
-                      cargaste una cartera, usa el capital manual guardado como
+                      Calculado desde Inversiones. Si todavia no cargaste
+                      inversiones, usa el capital manual guardado como
                       respaldo.
                     </span>
                   </div>

@@ -135,6 +135,67 @@ export const EDITABLE_FINANCIAL_TYPES: Exclude<
   "inversion" | "ahorro" | "deuda" | "decision"
 >[] = ["gasto", "ingreso"];
 
+export function noteMatchesUiFolder(
+  note: FinancialNote,
+  folder: FinancialFolder,
+) {
+  if (folder === "Captura rapida") {
+    return note.folder === folder;
+  }
+
+  const hasMatchingAnalysis = note.analysis.some((item) =>
+    itemMatchesUiFolder(item, folder),
+  );
+
+  return hasMatchingAnalysis || (note.analysis.length === 0 && note.folder === folder);
+}
+
+function itemMatchesUiFolder(
+  item: DetectedFinancialItem,
+  folder: FinancialFolder,
+) {
+  if (item.ignored) {
+    return false;
+  }
+
+  if (folder === "Ingresos") {
+    return item.type === "ingreso";
+  }
+
+  const isLargePurchase =
+    item.type === "deuda" || Boolean(item.antiErrorReview?.applies);
+
+  if (folder === "Compras grandes") {
+    return isLargePurchase;
+  }
+
+  if (folder === "Gastos") {
+    return item.type === "gasto" && !isLargePurchase;
+  }
+
+  return noteFolderNameForType(item.type) === folder;
+}
+
+function noteFolderNameForType(type: FinancialType): FinancialFolder {
+  if (type === "ingreso") {
+    return "Ingresos";
+  }
+
+  if (type === "gasto") {
+    return "Gastos";
+  }
+
+  if (type === "deuda") {
+    return "Compras grandes";
+  }
+
+  if (type === "inversion") {
+    return "Inversiones";
+  }
+
+  return "Captura rapida";
+}
+
 export type AnalyzeFinancialNoteOptions = {
   defaultCurrency?: string;
   dailyUsdQuote?: DailyUsdQuote;
