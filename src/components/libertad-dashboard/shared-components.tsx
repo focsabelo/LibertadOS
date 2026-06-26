@@ -32,7 +32,7 @@ export function MetricCard({
   tone?: "neutral" | "green" | "blue" | "amber" | "red";
 }) {
   const toneClasses = {
-    neutral: "border-stone-200 bg-stone-50 text-stone-950",
+    neutral: "border-stone-200 bg-white text-stone-950",
     green: "border-emerald-100 bg-emerald-50 text-emerald-950",
     blue: "border-sky-100 bg-sky-50 text-sky-950",
     amber: "border-amber-100 bg-amber-50 text-amber-950",

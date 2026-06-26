@@ -222,13 +222,14 @@ export function WealthRoadmapPanel({
   return (
     <section className="libertad-surface rounded-lg p-5 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+        <div className="max-w-4xl">
           <h2 className="text-xl font-semibold text-stone-950">
-            Roadmap patrimonial
+            Roadmap proximos 15 anos
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-            Hitos patrimoniales calculados con datos confirmados. La simulacion
-            queda separada de la realidad.
+            Roadmap 15 años: progreso por etapas hacia libertad financiera. La
+            realidad usa capital confirmado, patrimonio real, reservas y cash
+            flow neto. La simulación solo estima fechas.
           </p>
         </div>
         <label className="grid gap-2 sm:min-w-[260px]">
@@ -259,27 +260,30 @@ export function WealthRoadmapPanel({
       <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="rounded-lg border border-stone-900 bg-stone-950 p-5 text-white">
           <p className="text-sm font-semibold text-emerald-300">
-            Proximo hito
+            Etapa actual
           </p>
           {nextMilestone ? (
             <>
               <h3 className="mt-3 text-3xl font-semibold text-balance">
-                {nextMilestone.milestone.label}
+                {nextMilestone.title}
               </h3>
               <p className="mt-3 text-sm leading-6 text-stone-300">
                 Te faltan{" "}
-                {currencyFormatter.format(nextMilestone.distanceAmount)} para
-                llegar a este hito.
+                {formatRoadmapValue(
+                  nextMilestone.missingAmount,
+                  nextMilestone.valueKind,
+                )}{" "}
+                para completar esta etapa.
               </p>
               <div
-                aria-label={`${nextMilestone.milestone.label}: ${percentFormatter.format(
-                  nextMilestone.progressPercent,
+                aria-label={`${nextMilestone.title}: ${percentFormatter.format(
+                  nextMilestone.progressPercentage,
                 )}% completado`}
                 aria-valuemax={100}
                 aria-valuemin={0}
                 aria-valuenow={Math.min(
                   100,
-                  Math.max(0, nextMilestone.progressPercent),
+                  Math.max(0, nextMilestone.progressPercentage),
                 )}
                 className="libertad-meter mt-5 h-4 bg-white/15"
                 role="progressbar"
@@ -289,7 +293,7 @@ export function WealthRoadmapPanel({
                   style={{
                     width: `${Math.min(
                       100,
-                      Math.max(0, nextMilestone.progressPercent),
+                      Math.max(0, nextMilestone.progressPercentage),
                     )}%`,
                   }}
                 />
@@ -306,7 +310,7 @@ export function WealthRoadmapPanel({
                 <SignalRow
                   label="Progreso"
                   value={`${percentFormatter.format(
-                    nextMilestone.progressPercent,
+                    nextMilestone.progressPercentage,
                   )}%`}
                 />
               </div>
@@ -339,14 +343,14 @@ export function WealthRoadmapPanel({
               Regla de lectura
             </p>
             <p className="mt-2 text-sm leading-6 text-stone-700">
-              El progreso real usa patrimonio e inversion confirmados. La
-              simulacion solo cambia el aporte mensual supuesto.
+              La realidad usa datos confirmados. La simulacion solo estima
+              fechas y nunca modifica patrimonio real, reservas ni cash flow.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3">
+      <div className="mt-5 grid gap-4">
         {analysis.milestones.map((milestone) => (
           <MilestoneRow key={milestone.milestone.id} milestone={milestone} />
         ))}
@@ -356,67 +360,134 @@ export function WealthRoadmapPanel({
 }
 
 function MilestoneRow({ milestone }: { milestone: MilestoneProgress }) {
-  const statusClasses = milestone.isReached
-    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-    : milestone.isNext
-      ? "border-stone-900 bg-stone-950 text-white"
-      : "border-stone-200 bg-white text-stone-800";
+  const status = roadmapStatusCopy(milestone.status);
+  const isCurrent = milestone.isNext;
+  const isDark = milestone.status === "in_progress";
+  const mutedText = isDark ? "text-stone-300" : "text-stone-600";
+  const rowClasses = isCurrent && !isDark
+    ? "border-emerald-700 bg-emerald-50 text-stone-950 shadow-[inset_5px_0_0_rgb(4_120_87)]"
+    : status.classes;
+  const subPanelClasses = isDark
+    ? "border-white/10 bg-white/10 text-stone-200"
+    : isCurrent
+      ? "border-emerald-200 bg-white text-stone-800"
+    : milestone.status === "locked"
+      ? "border-stone-200 bg-white text-stone-500"
+      : "border-stone-200 bg-stone-50 text-stone-700";
 
   return (
-    <div className={`rounded-md border p-4 ${statusClasses}`}>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_130px_150px_150px] lg:items-center">
+    <article className={`rounded-md border p-4 ${rowClasses}`}>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_150px_150px_150px_150px] lg:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold">{milestone.milestone.label}</p>
-            {milestone.isNext ? (
-              <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-white">
-                Prioritario
-              </span>
-            ) : null}
-            {milestone.isReached ? (
-              <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-xs font-semibold text-emerald-950">
-                Alcanzado
-              </span>
-            ) : null}
+            <p className="text-base font-semibold">{milestone.title}</p>
+            <span
+              className={
+                isCurrent && !isDark
+                  ? "rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800"
+                  : status.badgeClasses
+              }
+            >
+              {isCurrent ? `Actual · ${status.label}` : status.label}
+            </span>
           </div>
-          <p
-            className={`mt-1 text-xs leading-5 ${
-              milestone.isNext ? "text-stone-300" : "text-stone-500"
-            }`}
-          >
+          <p className={`mt-2 text-sm leading-6 ${mutedText}`}>
+            {milestone.description}
+          </p>
+          <p className={`mt-2 text-xs leading-5 ${mutedText}`}>
             Base: {roadmapBasisLabel(milestone.milestone.basis)}
           </p>
           <div
-            aria-label={`${milestone.milestone.label}: ${percentFormatter.format(
-              milestone.progressPercent,
+            aria-label={`${milestone.title}: ${percentFormatter.format(
+              milestone.progressPercentage,
             )}% completado`}
             aria-valuemax={100}
             aria-valuemin={0}
-            aria-valuenow={Math.min(100, Math.max(0, milestone.progressPercent))}
+            aria-valuenow={Math.min(
+              100,
+              Math.max(0, milestone.progressPercentage),
+            )}
             className={`libertad-meter mt-3 h-3 ${
-              milestone.isNext ? "bg-white/15" : ""
+              isDark ? "bg-white/15" : "bg-stone-200"
             }`}
             role="progressbar"
           >
             <div
               className={`h-full rounded-full ${
-                milestone.isNext ? "bg-emerald-400" : "bg-emerald-700"
+                isDark
+                  ? "bg-emerald-400"
+                  : isCurrent
+                    ? "bg-emerald-700"
+                  : milestone.status === "locked"
+                    ? "bg-stone-300"
+                    : "bg-emerald-700"
               }`}
               style={{
                 width: `${Math.min(
                   100,
-                  Math.max(0, milestone.progressPercent),
+                  Math.max(0, milestone.progressPercentage),
                 )}%`,
+                minWidth: isCurrent && !milestone.isReached ? "0.75rem" : undefined,
               }}
             />
           </div>
         </div>
 
-        <RoadmapValue label="Actual" value={currencyFormatter.format(milestone.currentAmount)} />
-        <RoadmapValue label="Faltan" value={currencyFormatter.format(milestone.distanceAmount)} />
-        <RoadmapValue label="Fecha estimada" value={formatMonths(milestone.estimatedMonths)} />
+        <RoadmapValue
+          label="Actual"
+          value={formatRoadmapValue(milestone.currentValue, milestone.valueKind)}
+        />
+        <RoadmapValue
+          label="Objetivo"
+          value={formatRoadmapValue(milestone.targetValue, milestone.valueKind)}
+        />
+        <RoadmapValue
+          label="Faltan"
+          value={formatRoadmapValue(milestone.missingAmount, milestone.valueKind)}
+        />
+        <RoadmapValue
+          label="Fecha estimada"
+          value={formatMonths(milestone.estimatedMonths)}
+        />
       </div>
-    </div>
+
+      {milestone.milestone.setupCostAmount !== undefined ||
+      milestone.milestone.operationalTargetAmount !== undefined ? (
+        <div className={`mt-4 grid gap-3 rounded-md border p-3 sm:grid-cols-2 ${subPanelClasses}`}>
+          {milestone.milestone.operationalTargetAmount !== undefined ? (
+            <RoadmapValue
+              label="Capital operativo objetivo"
+              value={currencyFormatter.format(
+                milestone.milestone.operationalTargetAmount,
+              )}
+            />
+          ) : null}
+          {milestone.milestone.setupCostAmount !== undefined ? (
+            <RoadmapValue
+              label="Costo bot separado"
+              value={currencyFormatter.format(milestone.milestone.setupCostAmount)}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <RoadmapTextBlock
+          className={subPanelClasses}
+          label="Condiciones"
+          items={milestone.unlockConditions}
+        />
+        <RoadmapTextBlock
+          className={subPanelClasses}
+          label="Riesgos"
+          items={milestone.riskNotes}
+        />
+        <div className={`rounded-md border p-3 ${subPanelClasses}`}>
+          <p className="text-xs font-semibold opacity-75">Regla de lectura</p>
+          <p className="mt-2 text-xs leading-5">{milestone.readingRule}</p>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -429,10 +500,84 @@ function RoadmapValue({ label, value }: { label: string; value: string }) {
   );
 }
 
+function RoadmapTextBlock({
+  className,
+  label,
+  items,
+}: {
+  className: string;
+  label: string;
+  items: string[];
+}) {
+  return (
+    <div className={`rounded-md border p-3 ${className}`}>
+      <p className="text-xs font-semibold opacity-75">{label}</p>
+      <ul className="mt-2 grid gap-1.5">
+        {items.map((item) => (
+          <li key={item} className="text-xs leading-5">
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function roadmapStatusCopy(status: MilestoneProgress["status"]) {
+  const copy = {
+    locked: {
+      label: "Bloqueada",
+      classes: "border-stone-200 bg-stone-50 text-stone-500",
+      badgeClasses:
+        "rounded-md border border-stone-200 bg-white px-2 py-1 text-xs font-semibold text-stone-500",
+    },
+    in_progress: {
+      label: "En progreso",
+      classes: "border-stone-900 bg-stone-950 text-white",
+      badgeClasses:
+        "rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-white",
+    },
+    enabled: {
+      label: "Habilitada",
+      classes: "border-stone-300 bg-white text-stone-900",
+      badgeClasses:
+        "rounded-md border border-stone-300 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-700",
+    },
+    completed: {
+      label: "Completada",
+      classes: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      badgeClasses:
+        "rounded-md border border-emerald-200 bg-white px-2 py-1 text-xs font-semibold text-emerald-950",
+    },
+  };
+
+  return copy[status];
+}
+
 function roadmapBasisLabel(basis: MilestoneProgress["milestone"]["basis"]) {
-  return basis === "invested_capital"
-    ? "capital de inversiones"
-    : "patrimonio neto";
+  const labels = {
+    invested_capital: "capital de inversiones",
+    net_worth: "patrimonio neto",
+    bot_operational_capital: "capital operativo confirmado del bot",
+    section8_property_count: "propiedades Section 8 confirmadas",
+    positive_cash_flow_property_count:
+      "propiedades con cash flow neto positivo",
+  };
+
+  return labels[basis];
+}
+
+function formatRoadmapValue(
+  value: number,
+  valueKind: MilestoneProgress["valueKind"],
+) {
+  if (valueKind === "properties") {
+    return `${numberFormatter.format(value)} ${
+      Math.abs(value) === 1 ? "propiedad" : "propiedades"
+    }`;
+  }
+
+  return currencyFormatter.format(value);
 }
 
 function formatMonths(months?: number) {

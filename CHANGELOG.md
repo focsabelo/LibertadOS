@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Dashboard muestra los ultimos movimientos confirmados dentro de Pulso financiero, sin incluir notas pendientes ni datos sin confirmar.
+* Roadmap muestra las proximas 7 etapas a 15 anos con barras, estados bloqueado/en progreso/habilitado/completado, condiciones, riesgos y regla de lectura.
+* Roadmap separa Bot 10K en US$10.000 de capital operativo y US$2.000 de costo del bot, usando capital operativo confirmado para el progreso real.
 * Notas convierte a USD el impacto real en libertad de gastos UYU antes de sumarlo en el resumen, y muestra UYU de forma explicita en el detalle detectado.
 * Negocios propios deja de ser placeholder y suma fichas editables con flujo, caja, capital, retiros, reinversion, deuda, valoracion prudente y persistencia en settings.
 * Inversiones permite quitar activos base de la asignacion y restaurarlos luego desde la misma seccion.

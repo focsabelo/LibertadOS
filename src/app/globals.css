@@ -4,8 +4,8 @@
   --background: #eef0eb;
   --foreground: #171717;
   --surface: #ffffff;
-  --surface-muted: #fbfaf7;
-  --surface-quiet: #ebe7dd;
+  --surface-muted: #ffffff;
+  --surface-quiet: #f5f6f2;
   --border-subtle: #ded8cc;
   --focus-ring: #047857;
 }
@@ -52,7 +52,7 @@ button:disabled {
 .libertad-surface {
   min-width: 0;
   border: 1px solid var(--border-subtle);
-  background: var(--surface);
+  background: #ffffff;
   box-shadow:
     0 1px 2px rgb(27 23 15 / 0.06),
     0 8px 24px rgb(27 23 15 / 0.04);
@@ -61,7 +61,7 @@ button:disabled {
 .libertad-soft-panel {
   min-width: 0;
   border: 1px solid var(--border-subtle);
-  background: var(--surface-muted);
+  background: #ffffff;
 }
 
 .libertad-field {

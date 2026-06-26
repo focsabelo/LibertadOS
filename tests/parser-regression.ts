@@ -1202,6 +1202,7 @@ type WealthRoadmapCase = {
   inputs: {
     netWorth: number;
     investedCapital: number;
+    botOperationalCapital?: number;
     monthlyContribution: number;
     annualReturnPercent: number;
     simulatedMonthlyContribution?: number;
@@ -1214,6 +1215,7 @@ type WealthRoadmapCase = {
   estimatedMonths: number;
   simulatedEstimatedMonths?: number;
   isNext: boolean;
+  status?: "locked" | "in_progress" | "enabled" | "completed";
 };
 
 type BotOperaCase = {
@@ -1740,13 +1742,21 @@ assertIncludes(
 
 const roadmapCases: WealthRoadmapCase[] = [
   {
-    name: "Primer hito invertido usa capital invertido confirmado",
+    name: "Hito custom invertido usa capital invertido confirmado",
     inputs: {
       netWorth: 85000,
       investedCapital: 38000,
       monthlyContribution: 1000,
       annualReturnPercent: 0,
       simulatedMonthlyContribution: 2000,
+      milestones: [
+        {
+          id: "invested_50k",
+          label: "US$50.000 invertidos",
+          targetAmount: 50000,
+          basis: "invested_capital",
+        },
+      ],
     },
     milestoneId: "invested_50k",
     currentAmount: 38000,
@@ -1763,6 +1773,20 @@ const roadmapCases: WealthRoadmapCase[] = [
       investedCapital: 62000,
       monthlyContribution: 1500,
       annualReturnPercent: 0,
+      milestones: [
+        {
+          id: "invested_50k",
+          label: "US$50.000 invertidos",
+          targetAmount: 50000,
+          basis: "invested_capital",
+        },
+        {
+          id: "first_property",
+          label: "Primer inmueble",
+          targetAmount: 100000,
+          basis: "net_worth",
+        },
+      ],
     },
     milestoneId: "invested_50k",
     currentAmount: 62000,
@@ -1778,6 +1802,20 @@ const roadmapCases: WealthRoadmapCase[] = [
       investedCapital: 62000,
       monthlyContribution: 1500,
       annualReturnPercent: 0,
+      milestones: [
+        {
+          id: "invested_50k",
+          label: "US$50.000 invertidos",
+          targetAmount: 50000,
+          basis: "invested_capital",
+        },
+        {
+          id: "first_property",
+          label: "Primer inmueble",
+          targetAmount: 100000,
+          basis: "net_worth",
+        },
+      ],
     },
     milestoneId: "first_property",
     currentAmount: 85000,
@@ -1793,6 +1831,20 @@ const roadmapCases: WealthRoadmapCase[] = [
       investedCapital: 420000,
       monthlyContribution: 4000,
       annualReturnPercent: 0,
+      milestones: [
+        {
+          id: "first_property",
+          label: "Primer inmueble",
+          targetAmount: 100000,
+          basis: "net_worth",
+        },
+        {
+          id: "invested_500k",
+          label: "US$500.000 en capital de inversiones",
+          targetAmount: 500000,
+          basis: "invested_capital",
+        },
+      ],
     },
     milestoneId: "invested_500k",
     currentAmount: 420000,
@@ -1808,6 +1860,20 @@ const roadmapCases: WealthRoadmapCase[] = [
       investedCapital: 520000,
       monthlyContribution: 5000,
       annualReturnPercent: 0,
+      milestones: [
+        {
+          id: "invested_500k",
+          label: "US$500.000 en capital de inversiones",
+          targetAmount: 500000,
+          basis: "invested_capital",
+        },
+        {
+          id: "net_worth_1m",
+          label: "US$1.000.000 de patrimonio",
+          targetAmount: 1000000,
+          basis: "net_worth",
+        },
+      ],
     },
     milestoneId: "net_worth_1m",
     currentAmount: 820000,
@@ -1815,6 +1881,23 @@ const roadmapCases: WealthRoadmapCase[] = [
     progressPercent: 82,
     estimatedMonths: 36,
     isNext: true,
+  },
+  {
+    name: "Roadmap 15 anos arranca con Bot 10K y costo separado",
+    inputs: {
+      netWorth: 0,
+      investedCapital: 0,
+      botOperationalCapital: 4000,
+      monthlyContribution: 1000,
+      annualReturnPercent: 0,
+    },
+    milestoneId: "bot_10k",
+    currentAmount: 4000,
+    distanceAmount: 8000,
+    progressPercent: 33.33333333333333,
+    estimatedMonths: 8,
+    isNext: true,
+    status: "in_progress",
   },
 ];
 
@@ -1827,6 +1910,36 @@ assert(
     (milestone) => milestone.id === "partial_retirement_5pct",
   ),
   "Roadmap default no debe incluir retiro parcial como hito base",
+);
+assertEqual(
+  DEFAULT_WEALTH_MILESTONES.length,
+  7,
+  "Roadmap default muestra 7 etapas para los proximos 15 anos",
+  "DEFAULT_WEALTH_MILESTONES.length",
+);
+assertEqual(
+  DEFAULT_WEALTH_MILESTONES[0].id,
+  "bot_10k",
+  "Roadmap default empieza por Bot 10K",
+  "DEFAULT_WEALTH_MILESTONES[0].id",
+);
+assertEqual(
+  DEFAULT_WEALTH_MILESTONES[0].targetAmount,
+  12000,
+  "Bot 10K incluye capital operativo y costo del bot",
+  "DEFAULT_WEALTH_MILESTONES[0].targetAmount",
+);
+assertEqual(
+  DEFAULT_WEALTH_MILESTONES[0].operationalTargetAmount,
+  10000,
+  "Bot 10K separa capital operativo del costo del bot",
+  "DEFAULT_WEALTH_MILESTONES[0].operationalTargetAmount",
+);
+assertEqual(
+  DEFAULT_WEALTH_MILESTONES[0].setupCostAmount,
+  2000,
+  "Bot 10K separa el costo del bot",
+  "DEFAULT_WEALTH_MILESTONES[0].setupCostAmount",
 );
 
 const defaultBotAnalysis = analyzeBotOpera24hs(DEFAULT_BOT_OPERA24HS_INVESTMENT);
@@ -3133,6 +3246,10 @@ function runWealthRoadmapCase(expected: WealthRoadmapCase) {
     "milestone.estimatedMonths",
   );
   assertEqual(milestone.isNext, expected.isNext, expected.name, "milestone.isNext");
+
+  if (expected.status !== undefined) {
+    assertEqual(milestone.status, expected.status, expected.name, "milestone.status");
+  }
 
   if (expected.simulatedEstimatedMonths !== undefined) {
     assertAlmostEqual(

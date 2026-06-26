@@ -116,34 +116,150 @@ export const DEFAULT_BOT_OPERA24HS_INVESTMENT: BotOpera24hsInvestment = {
 
 export const DEFAULT_WEALTH_MILESTONES: readonly WealthMilestone[] = [
   {
-    id: "invested_50k",
-    label: "US$50.000 invertidos",
+    id: "bot_10k",
+    label: "Bot 10K",
+    description:
+      "Acumular US$10.000 de capital operativo en el bot de trading algoritmico. El costo del bot se lee separado del capital operativo.",
+    targetAmount: 12000,
+    operationalTargetAmount: 10000,
+    setupCostAmount: 2000,
+    basis: "bot_operational_capital",
+    valueKind: "usd",
+    unlockConditions: [
+      "Bot comprado",
+      "Bot funcionando",
+      "Registro mensual real",
+      "Capital operativo confirmado",
+    ],
+    riskNotes: [
+      "El costo del bot no se mezcla con capital operativo.",
+      "No contar promesas, backtests ni saldo sin registro mensual.",
+    ],
+    readingRule:
+      "Realidad: capital operativo confirmado. Simulacion: meses estimados, sin modificar patrimonio real.",
+  },
+  {
+    id: "bot_50k",
+    label: "Bot 50K",
+    description:
+      "Juntar US$50.000 de capital operativo real en el bot.",
     targetAmount: 50000,
-    basis: "invested_capital",
+    basis: "bot_operational_capital",
+    valueKind: "usd",
+    unlockConditions: [
+      "Capital operativo confirmado",
+      "Historial mensual",
+      "Rentabilidad real",
+    ],
+    riskNotes: [
+      "No contar capital prometido ni simulaciones.",
+      "Separar resultados reales de expectativa de rentabilidad.",
+    ],
+    readingRule:
+      "Solo cuenta capital operativo real confirmado en el bot.",
   },
   {
-    id: "first_property",
-    label: "Primer inmueble",
-    targetAmount: 100000,
-    basis: "net_worth",
+    id: "first_section8_property",
+    label: "Primera casa Section 8",
+    description:
+      "Habilitar y ejecutar la primera compra de una propiedad Section 8.",
+    targetAmount: 1,
+    basis: "section8_property_count",
+    valueKind: "properties",
+    unlockConditions: [
+      "Down payment",
+      "Costos iniciales",
+      "Mentoria",
+      "Reserva de 6 meses",
+      "Cash flow pasivo neto estimado >= US$300/mes",
+    ],
+    riskNotes: [
+      "No contar una compra sin gastos reales cargados.",
+      "La vacancia y mantenimiento deben entrar antes de leer cash flow.",
+    ],
+    readingRule:
+      "Cuenta solo una propiedad ejecutada y revisada con cash flow neto estimado.",
   },
   {
-    id: "five_properties",
+    id: "three_properties",
+    label: "3 propiedades",
+    description:
+      "Llegar a 3 propiedades con cash flow neto positivo.",
+    targetAmount: 3,
+    basis: "positive_cash_flow_property_count",
+    valueKind: "properties",
+    unlockConditions: [
+      "3 propiedades confirmadas",
+      "Cash flow neto positivo",
+      "Gastos reales cargados",
+    ],
+    riskNotes: [
+      "No contar propiedades con flujo negativo.",
+      "No contar propiedades sin gastos reales cargados.",
+    ],
+    readingRule:
+      "Cuenta solo propiedades con flujo neto positivo y gastos reales.",
+  },
+  {
+    id: "five_stabilized_properties",
     label: "5 propiedades",
-    targetAmount: 350000,
-    basis: "net_worth",
+    description:
+      "Llegar a 5 propiedades estabilizadas.",
+    targetAmount: 5,
+    basis: "positive_cash_flow_property_count",
+    valueKind: "properties",
+    unlockConditions: [
+      "Reservas completas",
+      "Property manager",
+      "Vacancia soportable",
+      "Cash flow neto positivo",
+    ],
+    riskNotes: [
+      "Una propiedad sin reserva completa no se lee como estabilizada.",
+      "El flujo neto debe sobrevivir vacancia y administracion.",
+    ],
+    readingRule:
+      "Cuenta solo propiedades estabilizadas con reservas y flujo neto positivo.",
   },
   {
-    id: "invested_500k",
-    label: "US$500.000 en capital de inversiones",
+    id: "net_worth_500k",
+    label: "US$500K patrimonio",
+    description:
+      "Alcanzar US$500.000 de patrimonio real confirmado.",
     targetAmount: 500000,
-    basis: "invested_capital",
+    basis: "net_worth",
+    valueKind: "usd",
+    unlockConditions: [
+      "Patrimonio real confirmado",
+      "Activos y deudas actualizados",
+      "Reservas separadas de simulaciones",
+    ],
+    riskNotes: [
+      "No contar valuaciones infladas ni capital prometido.",
+      "Separar patrimonio real de escenarios simulados.",
+    ],
+    readingRule:
+      "Usa patrimonio neto confirmado: activos reales menos deudas reales.",
   },
   {
     id: "net_worth_1m",
-    label: "US$1.000.000 de patrimonio",
+    label: "US$1M + cash flow",
+    description:
+      "Alcanzar US$1.000.000 de patrimonio confirmado + US$3.000-6.000/mes de cash flow neto.",
     targetAmount: 1000000,
     basis: "net_worth",
+    valueKind: "usd",
+    unlockConditions: [
+      "US$1.000.000 de patrimonio confirmado",
+      "US$3.000-6.000/mes de cash flow neto",
+      "Reservas y deuda revisadas",
+    ],
+    riskNotes: [
+      "Esta etapa representa libertad financiera parcial o total.",
+      "El cash flow debe ser neto, no ingreso bruto.",
+    ],
+    readingRule:
+      "El patrimonio se mide confirmado; el cash flow debe ser neto y recurrente.",
   },
 ];
 

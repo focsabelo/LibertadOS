@@ -24,6 +24,7 @@ import { MonthlyReviewPanel } from "@/components/libertad-dashboard/monthly-revi
 import { OwnedBusinessesPanel } from "@/components/libertad-dashboard/owned-businesses-panel";
 import {
   currencyFormatter,
+  formatCurrencyAmount,
   numberFormatter,
   percentFormatter,
 } from "@/components/libertad-dashboard/formatting";
@@ -151,6 +152,66 @@ function sortFixedMonthlyExpenses(expenses: FixedMonthlyExpense[]) {
 
     return a.name.localeCompare(b.name, "es");
   });
+}
+
+function confirmedTransactionTime(transaction: ConfirmedFinancialTransaction) {
+  return parseConfirmedTransactionDate(transaction)?.getTime() ?? 0;
+}
+
+function parseConfirmedTransactionDate(
+  transaction: ConfirmedFinancialTransaction,
+) {
+  const rawDate = transaction.date || transaction.confirmedAt;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+    const [year, month, day] = rawDate.split("-").map(Number);
+
+    return new Date(year, month - 1, day);
+  }
+
+  const parsedDate = rawDate ? new Date(rawDate) : null;
+
+  return parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
+}
+
+function formatConfirmedTransactionAmount(
+  transaction: ConfirmedFinancialTransaction,
+) {
+  const formattedAmount = formatCurrencyAmount(
+    (transaction.currency || "USD").toUpperCase(),
+    transaction.amount,
+  );
+  const isOutflow =
+    transaction.type === "gasto" || transaction.type === "deuda";
+  const isInflow =
+    transaction.type === "ingreso" ||
+    transaction.type === "inversion" ||
+    transaction.type === "ahorro";
+
+  if (isOutflow) {
+    return `- ${formattedAmount}`;
+  }
+
+  if (isInflow) {
+    return `+ ${formattedAmount}`;
+  }
+
+  return formattedAmount;
+}
+
+function formatConfirmedTransactionDate(
+  transaction: ConfirmedFinancialTransaction,
+) {
+  const parsedDate = parseConfirmedTransactionDate(transaction);
+
+  if (!parsedDate) {
+    return "Sin fecha";
+  }
+
+  return new Intl.DateTimeFormat("es-UY", {
+    day: "2-digit",
+    month: "short",
+  }).format(parsedDate);
 }
 
 
@@ -658,6 +719,7 @@ export function LibertadDashboard() {
       analyzeWealthRoadmap({
         netWorth: effectiveInputs.netWorth,
         investedCapital: effectiveInputs.investedCapital,
+        botOperationalCapital: botOperaAnalysis.currentOperationalCapital,
         monthlyContribution: inputs.monthlyContribution,
         annualReturnPercent: inputs.expectedAnnualReturn,
         simulatedMonthlyContribution: roadmapSimulatedContribution,
@@ -665,6 +727,7 @@ export function LibertadDashboard() {
     [
       effectiveInputs.investedCapital,
       effectiveInputs.netWorth,
+      botOperaAnalysis.currentOperationalCapital,
       inputs.expectedAnnualReturn,
       inputs.monthlyContribution,
       roadmapSimulatedContribution,
@@ -1204,6 +1267,16 @@ export function LibertadDashboard() {
     setWeeklyExecutionReviews([]);
   }
 
+  const recentConfirmedTransactions = useMemo(
+    () =>
+      [...confirmedTransactions]
+        .sort(
+          (a, b) => confirmedTransactionTime(b) - confirmedTransactionTime(a),
+        )
+        .slice(0, 5),
+    [confirmedTransactions],
+  );
+
   const needsDebtAttention = confirmedDebtLoad.highRiskCount > 0;
   const needsMarginAttention =
     financialMargin.state === "fragil" || financialMargin.state === "ajustado";
@@ -1462,7 +1535,7 @@ export function LibertadDashboard() {
                     </div>
                   </div>
 
-                  <div className="mt-8 rounded-lg border border-stone-200 bg-[#f8f7f3] p-4">
+                  <div className="mt-8 rounded-lg border border-stone-200 bg-white p-4">
                     <div className="flex items-center justify-between gap-4 text-sm font-medium">
                       <span className="text-stone-600">Progreso total</span>
                       <span className="libertad-number text-lg font-semibold text-stone-950">
@@ -1627,6 +1700,59 @@ export function LibertadDashboard() {
                       : "green"
                     }
                   />
+                </div>
+
+                <div className="mt-6 border-t border-stone-200 pt-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-semibold text-stone-950">
+                      Ultimos movimientos
+                    </h3>
+                    <button
+                      className="text-sm font-semibold text-stone-500 transition-colors hover:text-stone-950 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                      type="button"
+                      onClick={() => selectSection("notas")}
+                    >
+                      Ver notas
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {recentConfirmedTransactions.length > 0 ? (
+                      recentConfirmedTransactions.map((transaction) => (
+                        <div
+                          key={`${transaction.noteId}-${transaction.id}`}
+                          className="flex min-h-16 items-center justify-between gap-4 rounded-lg border border-stone-200 bg-white px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-stone-950">
+                              {transaction.noteTitle || transaction.sourceText}
+                            </p>
+                            <p className="mt-1 truncate text-xs text-stone-500">
+                              {transaction.category || transaction.type}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="libertad-number text-sm font-semibold text-stone-950">
+                              {formatConfirmedTransactionAmount(transaction)}
+                            </p>
+                            <p className="mt-1 text-xs text-stone-500">
+                              {formatConfirmedTransactionDate(transaction)}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-stone-300 bg-white px-4 py-4">
+                        <p className="text-sm font-semibold text-stone-950">
+                          Sin movimientos confirmados
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-stone-600">
+                          Las notas detectadas aparecen aca recien despues de
+                          confirmarlas manualmente.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
             </>

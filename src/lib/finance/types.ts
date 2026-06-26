@@ -607,11 +607,30 @@ export type BotOpera24hsAnalysis = {
 
 export type WealthMilestoneBasis = "invested_capital" | "net_worth";
 
+export type WealthRoadmapStatus =
+  | "locked"
+  | "in_progress"
+  | "enabled"
+  | "completed";
+
+export type WealthRoadmapValueKind = "usd" | "properties";
+
 export type WealthMilestone = {
   id: string;
   label: string;
   targetAmount: number;
-  basis: WealthMilestoneBasis;
+  basis:
+    | WealthMilestoneBasis
+    | "bot_operational_capital"
+    | "section8_property_count"
+    | "positive_cash_flow_property_count";
+  valueKind?: WealthRoadmapValueKind;
+  description?: string;
+  setupCostAmount?: number;
+  operationalTargetAmount?: number;
+  unlockConditions?: string[];
+  riskNotes?: string[];
+  readingRule?: string;
 };
 
 export type RoadmapProjection = {
@@ -625,6 +644,17 @@ export type MilestoneProgress = {
   currentAmount: number;
   distanceAmount: number;
   progressPercent: number;
+  title: string;
+  description: string;
+  currentValue: number;
+  targetValue: number;
+  progressPercentage: number;
+  status: WealthRoadmapStatus;
+  missingAmount: number;
+  unlockConditions: string[];
+  riskNotes: string[];
+  readingRule: string;
+  valueKind: WealthRoadmapValueKind;
   estimatedMonths: number;
   simulatedEstimatedMonths?: number;
   isReached: boolean;
@@ -634,6 +664,9 @@ export type MilestoneProgress = {
 export type WealthRoadmapInputs = RoadmapProjection & {
   netWorth: number;
   investedCapital: number;
+  botOperationalCapital?: number;
+  section8PropertyCount?: number;
+  positiveCashFlowPropertyCount?: number;
   milestones?: WealthMilestone[];
 };
 
