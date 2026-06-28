@@ -1508,100 +1508,69 @@ export function LibertadDashboard() {
 
               <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="libertad-surface rounded-lg p-5 sm:p-6">
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-emerald-800">
-                        Numero de libertad financiera
-                      </p>
-                      <p className="libertad-number mt-2 break-words text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
-                        {hasFreedomTarget
-                          ? currencyFormatter.format(metrics.target)
-                          : "Sin gasto mensual"}
-                      </p>
-                      <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
-                        Capital de inversiones necesario para sostener tu gasto
-                        mensual: gasto mensual deseado x 12 x 25.
-                      </p>
-                    </div>
-                    <div className="shrink-0 rounded-md border border-stone-200 bg-stone-950 px-4 py-3 text-left text-white">
-                      <p className="text-sm font-medium text-stone-300">
-                        Falta para la meta
-                      </p>
-                      <p className="libertad-number mt-1 text-2xl font-semibold text-white">
-                        {hasProgressCalculation
-                          ? currencyFormatter.format(metrics.remaining)
-                          : "Sin calcular"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-8 rounded-lg border border-stone-200 bg-white p-4">
-                    <div className="flex items-center justify-between gap-4 text-sm font-medium">
-                      <span className="text-stone-600">Progreso total</span>
-                      <span className="libertad-number text-lg font-semibold text-stone-950">
-                        {hasProgressCalculation
-                          ? `${percentFormatter.format(metrics.completed)}%`
-                          : "Sin calcular"}
-                      </span>
-                    </div>
-                    <div
-                      aria-label={
-                        hasProgressCalculation
-                          ? `Progreso total ${percentFormatter.format(
-                              metrics.completed,
-                            )}%`
-                          : "Progreso total sin calcular"
-                      }
-                      aria-valuemax={100}
-                      aria-valuemin={0}
-                      aria-valuenow={
-                        hasProgressCalculation
-                          ? Math.min(100, Math.max(0, metrics.completed))
-                          : 0
-                      }
-                      className="libertad-meter mt-4 h-5"
-                      role="progressbar"
-                    >
-                      <div
-                        className="h-full rounded-full bg-emerald-700"
-                        style={{
-                          width: `${
-                            hasProgressCalculation
-                              ? Math.min(100, Math.max(0, metrics.completed))
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <div className="mt-3 flex justify-between text-xs font-medium text-stone-500">
-                      <span>Hoy</span>
-                      <span>50%</span>
-                      <span>Libertad</span>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Situacion actual
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-stone-950">
+                      Patrimonio actual
+                    </h2>
+                    <p className="libertad-number mt-2 break-words text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
+                      {effectiveInputs.netWorth !== 0
+                        ? currencyFormatter.format(effectiveInputs.netWorth)
+                        : "Sin cargar"}
+                    </p>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
+                      Activos, inversiones y resultado mensual confirmado,
+                      descontando las deudas asociadas.
+                    </p>
                   </div>
 
                   <div className="libertad-card-grid mt-7 grid gap-3">
                     <MetricCard
-                      label="Gasto anual"
+                      label="Capital de inversiones"
+                      value={currencyFormatter.format(
+                        effectiveInputs.investedCapital,
+                      )}
+                      tone="blue"
+                    />
+                    <MetricCard
+                      label="Margen mensual"
                       value={
-                        hasFreedomTarget
-                          ? currencyFormatter.format(metrics.annual)
-                          : "Sin cargar"
+                        isGuidedEmptyState
+                          ? "Sin movimientos"
+                          : currencyFormatter.format(
+                              financialMargin.availableMonthlyMargin,
+                            )
+                      }
+                      tone={
+                        financialMargin.state === "fragil"
+                          ? "red"
+                          : financialMargin.state === "ajustado"
+                            ? "amber"
+                            : "green"
                       }
                     />
-                    <MetricCard
-                      label="Tiempo estimado"
-                      value={hasProgressCalculation ? yearsLabel : "Sin calcular"}
-                      tone="blue"
-                    />
-                    <MetricCard
-                      label="Capital hacia libertad"
-                      value={currencyFormatter.format(
-                        metrics.currentFreedomCapital,
-                      )}
-                      detail="Base usada para progreso, distinta del patrimonio total."
-                      tone="blue"
-                    />
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-stone-600">
+                        Progreso hacia libertad
+                      </p>
+                      <p className="libertad-number mt-1 text-lg font-semibold text-stone-950">
+                        {hasProgressCalculation
+                          ? `${percentFormatter.format(metrics.completed)}%`
+                          : "Sin calcular"}
+                      </p>
+                    </div>
+                    <button
+                      className="inline-flex min-h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                      type="button"
+                      onClick={() => selectSection("palancas")}
+                    >
+                      Ver plan de libertad
+                    </button>
                   </div>
                 </div>
 
@@ -1651,108 +1620,60 @@ export function LibertadDashboard() {
               </section>
 
               <section className="libertad-surface rounded-lg p-5 sm:p-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-semibold text-stone-950">
-                      Pulso financiero
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Actividad real
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-stone-950">
+                      Ultimos movimientos
                     </h2>
                   </div>
                   <button
-                    className="inline-flex h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-400 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                    className="text-sm font-semibold text-stone-500 transition-colors hover:text-stone-950 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
                     type="button"
                     onClick={() => selectSection("notas")}
                   >
-                    Capturar nota
+                    Ver notas
                   </button>
                 </div>
 
-                <div className="libertad-card-grid mt-5 grid gap-3">
-                  <MetricCard
-                    label="Patrimonio actual"
-                    value={
-                      effectiveInputs.netWorth !== 0
-                        ? currencyFormatter.format(effectiveInputs.netWorth)
-                        : "Sin cargar"
-                    }
-                    tone="green"
-                  />
-                  <MetricCard
-                    label="Capital de inversiones"
-                    value={currencyFormatter.format(
-                      effectiveInputs.investedCapital,
-                    )}
-                      tone="blue"
-                    />
-                  <MetricCard
-                    label="Margen mensual"
-                    value={
-                      isGuidedEmptyState
-                        ? "Sin movimientos"
-                        : currencyFormatter.format(
-                            financialMargin.availableMonthlyMargin,
-                          )
-                    }
-                    tone={
-                      financialMargin.state === "fragil"
-                        ? "red"
-                        : financialMargin.state === "ajustado"
-                          ? "amber"
-                      : "green"
-                    }
-                  />
-                </div>
-
-                <div className="mt-6 border-t border-stone-200 pt-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-base font-semibold text-stone-950">
-                      Ultimos movimientos
-                    </h3>
-                    <button
-                      className="text-sm font-semibold text-stone-500 transition-colors hover:text-stone-950 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-                      type="button"
-                      onClick={() => selectSection("notas")}
-                    >
-                      Ver notas
-                    </button>
-                  </div>
-
-                  <div className="mt-3 grid gap-2">
-                    {recentConfirmedTransactions.length > 0 ? (
-                      recentConfirmedTransactions.map((transaction) => (
-                        <div
-                          key={`${transaction.noteId}-${transaction.id}`}
-                          className="flex min-h-16 items-center justify-between gap-4 rounded-lg border border-stone-200 bg-white px-4 py-3"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-stone-950">
-                              {transaction.noteTitle || transaction.sourceText}
-                            </p>
-                            <p className="mt-1 truncate text-xs text-stone-500">
-                              {transaction.category || transaction.type}
-                            </p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="libertad-number text-sm font-semibold text-stone-950">
-                              {formatConfirmedTransactionAmount(transaction)}
-                            </p>
-                            <p className="mt-1 text-xs text-stone-500">
-                              {formatConfirmedTransactionDate(transaction)}
-                            </p>
-                          </div>
+                <div className="mt-4 grid gap-2">
+                  {recentConfirmedTransactions.length > 0 ? (
+                    recentConfirmedTransactions.map((transaction) => (
+                      <div
+                        key={`${transaction.noteId}-${transaction.id}`}
+                        className="flex min-h-16 items-center justify-between gap-4 rounded-lg border border-stone-200 bg-white px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-stone-950">
+                            {transaction.noteTitle || transaction.sourceText}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-stone-500">
+                            {transaction.category || transaction.type}
+                          </p>
                         </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-stone-300 bg-white px-4 py-4">
-                        <p className="text-sm font-semibold text-stone-950">
-                          Sin movimientos confirmados
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-stone-600">
-                          Las notas detectadas aparecen aca recien despues de
-                          confirmarlas manualmente.
-                        </p>
+                        <div className="shrink-0 text-right">
+                          <p className="libertad-number text-sm font-semibold text-stone-950">
+                            {formatConfirmedTransactionAmount(transaction)}
+                          </p>
+                          <p className="mt-1 text-xs text-stone-500">
+                            {formatConfirmedTransactionDate(transaction)}
+                          </p>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-stone-300 bg-white px-4 py-4">
+                      <p className="text-sm font-semibold text-stone-950">
+                        Sin movimientos confirmados
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-600">
+                        Las notas detectadas aparecen aca recien despues de
+                        confirmarlas manualmente.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </section>
             </>
@@ -1819,7 +1740,107 @@ export function LibertadDashboard() {
           ) : null}
 
           {activeSection === "palancas" ? (
-            <FireLeversPanel summary={transactionSummary} />
+            <section className="grid gap-5">
+              <section className="libertad-surface rounded-lg p-5 sm:p-6">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Numero de libertad financiera
+                    </p>
+                    <p className="libertad-number mt-2 break-words text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
+                      {hasFreedomTarget
+                        ? currencyFormatter.format(metrics.target)
+                        : "Sin gasto mensual"}
+                    </p>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
+                      Capital de inversiones necesario para sostener tu gasto
+                      mensual: gasto mensual deseado x 12 x 25.
+                    </p>
+                  </div>
+                  <div className="shrink-0 rounded-md border border-stone-200 bg-stone-950 px-4 py-3 text-left text-white">
+                    <p className="text-sm font-medium text-stone-300">
+                      Falta para la meta
+                    </p>
+                    <p className="libertad-number mt-1 text-2xl font-semibold text-white">
+                      {hasProgressCalculation
+                        ? currencyFormatter.format(metrics.remaining)
+                        : "Sin calcular"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-8 rounded-lg border border-stone-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-4 text-sm font-medium">
+                    <span className="text-stone-600">Progreso total</span>
+                    <span className="libertad-number text-lg font-semibold text-stone-950">
+                      {hasProgressCalculation
+                        ? `${percentFormatter.format(metrics.completed)}%`
+                        : "Sin calcular"}
+                    </span>
+                  </div>
+                  <div
+                    aria-label={
+                      hasProgressCalculation
+                        ? `Progreso total ${percentFormatter.format(
+                            metrics.completed,
+                          )}%`
+                        : "Progreso total sin calcular"
+                    }
+                    aria-valuemax={100}
+                    aria-valuemin={0}
+                    aria-valuenow={
+                      hasProgressCalculation
+                        ? Math.min(100, Math.max(0, metrics.completed))
+                        : 0
+                    }
+                    className="libertad-meter mt-4 h-5"
+                    role="progressbar"
+                  >
+                    <div
+                      className="h-full rounded-full bg-emerald-700"
+                      style={{
+                        width: `${
+                          hasProgressCalculation
+                            ? Math.min(100, Math.max(0, metrics.completed))
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <div className="mt-3 flex justify-between text-xs font-medium text-stone-500">
+                    <span>Hoy</span>
+                    <span>50%</span>
+                    <span>Libertad</span>
+                  </div>
+                </div>
+
+                <div className="libertad-card-grid mt-7 grid gap-3">
+                  <MetricCard
+                    label="Gasto anual"
+                    value={
+                      hasFreedomTarget
+                        ? currencyFormatter.format(metrics.annual)
+                        : "Sin cargar"
+                    }
+                  />
+                  <MetricCard
+                    label="Tiempo estimado"
+                    value={hasProgressCalculation ? yearsLabel : "Sin calcular"}
+                    tone="blue"
+                  />
+                  <MetricCard
+                    label="Capital hacia libertad"
+                    value={currencyFormatter.format(
+                      metrics.currentFreedomCapital,
+                    )}
+                    detail="Base usada para progreso, distinta del patrimonio total."
+                    tone="blue"
+                  />
+                </div>
+              </section>
+
+              <FireLeversPanel summary={transactionSummary} />
+            </section>
           ) : null}
 
           {activeSection === "revision" ? (

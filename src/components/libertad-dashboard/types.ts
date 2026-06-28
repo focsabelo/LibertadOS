@@ -134,8 +134,8 @@ export const secondaryModules: {
   },
   {
     id: "palancas",
-    label: "Palancas",
-    description: "Numero libertad",
+    label: "Libertad",
+    description: "Objetivo y palancas",
   },
   {
     id: "roadmap",

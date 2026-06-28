@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-* Dashboard muestra los ultimos movimientos confirmados dentro de Pulso financiero, sin incluir notas pendientes ni datos sin confirmar.
+* Dashboard prioriza patrimonio actual, capital de inversiones y margen, muestra los ultimos movimientos confirmados como Actividad real y lleva el objetivo completo a la seccion avanzada Libertad.
 * Roadmap muestra las proximas 7 etapas a 15 anos: Bot 10K, Bot 50K, primera casa Section 8, 3 propiedades, 5 propiedades, US$500K de patrimonio y US$1M + cash flow, con barras, estados bloqueado/en progreso/habilitado/completado, condiciones, riesgos y regla de lectura.
 * Roadmap separa Bot 10K en US$10.000 de capital operativo y US$2.000 de costo del bot, usando capital operativo confirmado para el progreso real.
 * Notas convierte a USD el impacto real en libertad de gastos UYU antes de sumarlo en el resumen, y muestra UYU de forma explicita en el detalle detectado.
