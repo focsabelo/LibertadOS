@@ -165,7 +165,7 @@ Exports preserve stable IDs, dates, native currencies and amounts, USD conversio
 
 All schema changes live in a new Supabase migration. Every new private table enables RLS. Select, insert, update, and permitted archival operations require `auth.uid() = user_id`. Ledger rows must reference accounts owned by the same authenticated user.
 
-Database functions validate ownership, account status, currency consistency, positive amounts, required reasons, transfer source/destination differences, and balanced event structure. Atomic functions cover note confirmation with ledger entries, transfers, adjustments, reversals, and explicit migrations.
+Database functions validate ownership, account status, currency consistency, positive amounts, required reasons, transfer source/destination differences, and balanced event structure. Atomic functions cover note confirmation with ledger entries, transfers, adjustments, reversals, and explicit migrations. Ledger mutations run through narrowly scoped `security definer` functions with a fixed `search_path`, an explicit `auth.uid() = p_user_id` check, and ownership checks for every referenced row. Direct insert, update, and delete privileges on ledger history are revoked from browser roles.
 
 Client code uses only the existing public Supabase URL and anonymous key with the authenticated session. No service-role behavior or client-side RLS bypass is introduced.
 
