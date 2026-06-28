@@ -3,7 +3,7 @@
 ## Unreleased
 
 * Dashboard muestra los ultimos movimientos confirmados dentro de Pulso financiero, sin incluir notas pendientes ni datos sin confirmar.
-* Roadmap muestra las proximas 7 etapas a 15 anos con barras, estados bloqueado/en progreso/habilitado/completado, condiciones, riesgos y regla de lectura.
+* Roadmap muestra las proximas 7 etapas a 15 anos: Bot 10K, Bot 50K, primera casa Section 8, 3 propiedades, 5 propiedades, US$500K de patrimonio y US$1M + cash flow, con barras, estados bloqueado/en progreso/habilitado/completado, condiciones, riesgos y regla de lectura.
 * Roadmap separa Bot 10K en US$10.000 de capital operativo y US$2.000 de costo del bot, usando capital operativo confirmado para el progreso real.
 * Notas convierte a USD el impacto real en libertad de gastos UYU antes de sumarlo en el resumen, y muestra UYU de forma explicita en el detalle detectado.
 * Negocios propios deja de ser placeholder y suma fichas editables con flujo, caja, capital, retiros, reinversion, deuda, valoracion prudente y persistencia en settings.
@@ -13,7 +13,7 @@
 * Bot especulacion confirma el aporte real por cada mes, separado del resultado mensual.
 * Bot especulacion muestra el capital inicial como metrica junto al capital aportado y operativo.
 * La navegacion avanzada renombra Cartera como Inversiones y agrega la seccion Negocios propios para separar activos operativos de inversiones.
-* Roadmap mide el hito de US$500.000 contra capital de inversiones, elimina el retiro parcial 5% como hito base y mantiene US$1.000.000 contra patrimonio neto.
+* Roadmap reemplaza la secuencia anterior por Bot 10K, Bot 50K, primera casa Section 8, 3 propiedades, 5 propiedades, US$500K de patrimonio y US$1M + cash flow.
 * Las vistas laterales de Notas cuentan/listan gastos, ingresos y compras grandes desde los datos detectados, y el panel detectado ya no muestra el campo Categoria.
 * Notas queda enfocada en gastos, compras grandes e ingresos extra ya ocurridos; inversiones, deudas, ahorros y decisiones dejan de aparecer como opciones guardables desde ese flujo.
 * Gastos fijos interpreta `$` como UYU por defecto para reflejar el uso local en Uruguay; `USD`, `US$` y `U$S` siguen siendo dolares.
@@ -270,7 +270,7 @@
 * Modelo `WealthMilestone` para hitos patrimoniales basados en capital invertido o patrimonio neto.
 * Calculo de progreso, distancia en dolares, porcentaje completado y meses estimados por hito.
 * Separacion entre progreso real y simulacion de mayor aporte mensual.
-* Hitos iniciales: US$50.000 invertidos, primer inmueble, 5 propiedades, US$500.000, retiro parcial 5% anual y US$1.000.000.
+* Hitos iniciales: Bot 10K, Bot 50K, primera casa Section 8, 3 propiedades, 5 propiedades, US$500K de patrimonio y US$1M + cash flow.
 * Pantalla dedicada de Roadmap con proximo hito prioritario, lista de hitos y supuesto editable de aporte simulado.
 * Impacto de gastos confirmados expresado como retraso aproximado en meses sobre el hito.
 * Tests de calculo para siguiente hito, hitos alcanzados y simulacion de mayor aporte.

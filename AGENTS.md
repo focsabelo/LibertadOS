@@ -20,6 +20,22 @@ Use `PRODUCT.md` as the product source of truth when product intent, scope, or t
 - Do not add dependencies unless the existing stack cannot reasonably solve the task.
 - Small copy edits, narrow fixes, and instruction-only changes should stay lightweight; do not run heavy design, documentation, or audit workflows unless they are relevant.
 
+## Project Skill Selection
+
+- Use the smallest set of skills that fully covers the task. One primary skill is the default; add another only for a distinct subtask that genuinely needs it.
+- A skill's `description` is its activation boundary. Do not load a skill because it is merely adjacent to the topic, shares a keyword, or might be generally helpful.
+- If two skills overlap, choose the narrower match. Do not run both over the same work unless the user explicitly asks for both outputs.
+- Explicit skill requests take precedence. Skills that require councils, personas, or parallel advisors (`llm-council`) activate only when the user explicitly asks for that workflow.
+- General coding, debugging, and small product changes should not activate marketing, brand, research, personal-finance, legal, career, presentation, or study-document skills.
+- Keep advisory skills advisory: `luca` and `nova` review/specify but do not implement; use implementation-oriented project skills when code changes are requested.
+- Route common overlaps as follows:
+  - `prompt-master` for optimizing a prompt for a named AI tool; `optimizador-prompts` for turning rough notes into a general reusable prompt.
+  - `humanizador` for explicitly removing robotic/AI tone; `canon` for cross-asset brand-voice consistency.
+  - `verificador-datos` for claim-by-claim fact-checking; `juno` for a multi-source research brief.
+  - `arquitecto-presupuesto` for a person's own monthly budget; `tally` for business/project costs and supplied financial files.
+  - `presentaciones-visuales` only for self-contained HTML slides; use the dedicated presentation tooling for PPTX or Google Slides.
+  - Existing frontend skills remain the default for implementation; `nova` is only for a no-code advisory audit/spec.
+
 ## Supabase / Security Rules
 
 - Use only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in browser-safe code.

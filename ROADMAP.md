@@ -184,11 +184,13 @@ Mostrar el camino completo hacia la libertad financiera como una secuencia de hi
 
 Hitos iniciales:
 
-* US$50.000 invertidos;
-* primer inmueble;
+* Bot 10K;
+* Bot 50K;
+* primera casa Section 8;
+* 3 propiedades;
 * 5 propiedades;
-* US$500.000 en capital de inversiones;
-* US$1.000.000 de patrimonio.
+* US$500K de patrimonio;
+* US$1M + cash flow.
 
 Mostrar:
 

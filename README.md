@@ -346,12 +346,13 @@ Muestra hitos patrimoniales.
 
 Secuencia orientativa:
 
-1. llegar a USD 50.000 invertidos;
-2. usar ese capital como garantia para primer inmueble, si aplica;
-3. seguir invirtiendo;
-4. avanzar hacia 5 propiedades;
-5. llegar a USD 500.000 en capital de inversiones;
-6. continuar hacia USD 1.000.000 de patrimonio neto.
+1. Bot 10K;
+2. Bot 50K;
+3. primera casa Section 8;
+4. 3 propiedades;
+5. 5 propiedades;
+6. US$500K de patrimonio;
+7. US$1M + cash flow.
 
 El roadmap separa progreso real de simulaciones y no promete rentabilidad.
 
